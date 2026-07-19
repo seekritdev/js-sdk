@@ -1,0 +1,41 @@
+{
+  "name": "@seekrit/sdk",
+  "version": "0.1.0",
+  "description": "Read-path SDK for seekrit — resolve and decrypt secrets client-side with a service token. Runs on Node, Bun, Deno, browsers, and Cloudflare Workers.",
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "engines": {
+    "node": ">=18"
+  },
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node test/vectors.test.mjs",
+    "prepack": "npm run build"
+  },
+  "keywords": [
+    "seekrit",
+    "secrets",
+    "secrets-manager",
+    "encryption",
+    "zero-knowledge",
+    "webcrypto"
+  ],
+  "license": "MIT",
+  "homepage": "https://seekrit.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/seekritdev/js-sdk.git"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

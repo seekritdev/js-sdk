@@ -1,0 +1,40 @@
+# Publishes @seekrit/sdk to npm via OIDC trusted publishing (no NODE_AUTH_TOKEN)
+# with build provenance. Runs in THIS public repo — trusted publishing
+# authenticates the workflow itself, so it can't live in the private monorepo.
+# Overwritten on each sync.
+#
+# Triggered by a version tag (`vX.Y.Z`) pushed to this repo, or manually.
+#
+# One-time setup on npmjs.com: package @seekrit/sdk → Settings → Trusted
+# Publisher → GitHub Actions → Owner: seekritdev, Repo: js-sdk,
+# Workflow: publish.yml. (The @seekrit scope/package must exist first.)
+name: Publish to npm
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # OIDC trusted publishing + provenance attestation
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+      # Trusted publishing needs npm >= 11.5.1 (newer than Node 22 bundles).
+      - run: npm install -g npm@latest
+      - run: npm install
+      - name: Verify before publishing
+        run: |
+          npm run typecheck
+          npm test
+      - name: Publish
+        run: npm publish --provenance --access public
