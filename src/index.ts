@@ -18,8 +18,11 @@ export {
   SeekritError,
   SeekritApiError,
   SeekritCryptoError,
+  SeekritReferenceError,
   type CryptoErrorCode,
+  type ReferenceErrorCode,
 } from "./errors.js";
+export { interpolateSecrets, type InterpolationResult } from "./interpolate.js";
 export type {
   ResolveResponse,
   ResolveLayer,

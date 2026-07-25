@@ -10,7 +10,13 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { materialize, SeekritCryptoError, TokenKey } from "../dist/index.js";
+import {
+  interpolateSecrets,
+  materialize,
+  SeekritCryptoError,
+  SeekritReferenceError,
+  TokenKey,
+} from "../dist/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const vectors = JSON.parse(readFileSync(join(here, "..", "testdata", "vectors.json"), "utf8"));
@@ -57,6 +63,32 @@ await check("unicode and empty round-trip", async () => {
   assert.equal(merged.UNICODE, "héllo-🌍-\n-tab\tend");
   assert.equal(merged.EMPTY, "");
 });
+
+await check("secret references expand over the merged set", async () => {
+  const merged = await materialize(vectors.resolve, key);
+  assert.equal(merged.REFERENCING, "url=postgres://group/db;shared=from-app");
+  assert.equal(merged.ESCAPED_REF, "${SHARED}");
+  assert.equal(merged.DANGLING_REF, "build-${NOT_A_SECRET}");
+});
+
+await check("interpolate:false returns the stored text", async () => {
+  const merged = await materialize(vectors.resolve, key, { interpolate: false });
+  assert.equal(merged.REFERENCING, "url=${DATABASE_URL};shared=${SHARED}");
+});
+
+for (const testCase of vectors.interpolation.cases) {
+  await check(`interpolation: ${testCase.name}`, () => {
+    const { values, unresolved } = interpolateSecrets(testCase.input);
+    assert.deepEqual(values, testCase.expected);
+    assert.deepEqual(unresolved, testCase.unresolved);
+  });
+}
+
+for (const testCase of vectors.interpolation.cycles) {
+  await check(`interpolation rejects: ${testCase.name}`, () => {
+    assert.throws(() => interpolateSecrets(testCase.input), SeekritReferenceError);
+  });
+}
 
 await check("wrong token cannot unwrap", async () => {
   const wrongKey = await TokenKey.parse(await makeValidButDifferentToken());

@@ -26,6 +26,23 @@ export class SeekritCryptoError extends SeekritError {
   }
 }
 
+/** Why a `${OTHER_SECRET}` reference could not be expanded. */
+export type ReferenceErrorCode = "CYCLE" | "TOO_LARGE";
+
+/**
+ * A secret references another secret in a way that has no answer: a cycle, or
+ * an expansion that grows without bound. An unknown reference is *not* an error
+ * — it is left as literal text (see `interpolateSecrets`).
+ */
+export class SeekritReferenceError extends SeekritError {
+  readonly code: ReferenceErrorCode;
+  constructor(code: ReferenceErrorCode, message: string) {
+    super(message);
+    this.name = "SeekritReferenceError";
+    this.code = code;
+  }
+}
+
 /** The resolve API returned a non-2xx response. */
 export class SeekritApiError extends SeekritError {
   readonly status: number;

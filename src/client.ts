@@ -13,6 +13,11 @@ export interface SeekritOptions {
   with?: Record<string, string>;
   /** Custom fetch implementation (defaults to the global `fetch`). */
   fetch?: typeof globalThis.fetch;
+  /**
+   * Expand `${OTHER_SECRET}` references in resolved values (default `true`).
+   * Set `false` to receive the stored text verbatim.
+   */
+  interpolate?: boolean;
 }
 
 /** Read an env var across Node/Bun/Deno; returns undefined in the browser. */
@@ -42,6 +47,7 @@ export class Seekrit {
   private readonly apiUrl: string;
   private readonly with: Record<string, string>;
   private readonly fetchImpl: typeof globalThis.fetch;
+  private readonly interpolate: boolean;
   private keyPromise?: Promise<TokenKey>;
 
   constructor(options: SeekritOptions = {}) {
@@ -55,6 +61,7 @@ export class Seekrit {
       "",
     );
     this.with = options.with ?? {};
+    this.interpolate = options.interpolate ?? true;
     const fetchImpl = options.fetch ?? globalThis.fetch;
     if (typeof fetchImpl !== "function") {
       throw new SeekritError("no global fetch available; pass { fetch } explicitly");
@@ -65,7 +72,7 @@ export class Seekrit {
   /** Fetch, decrypt, and merge; resolves to `{ NAME: value }`. Fail-closed. */
   async resolve(): Promise<Record<string, string>> {
     const [response, key] = await Promise.all([this.fetch(), this.parseKey()]);
-    return materialize(response, key);
+    return materialize(response, key, { interpolate: this.interpolate });
   }
 
   /** Resolve and return a single secret's value, or `undefined` if absent. */

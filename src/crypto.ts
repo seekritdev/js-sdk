@@ -9,6 +9,7 @@
  *   secret      sc1.<iv>.<ciphertext||tag>
  */
 import { SeekritCryptoError } from "./errors.js";
+import { interpolateSecrets } from "./interpolate.js";
 import type { ResolveResponse } from "./types.js";
 
 const HKDF_INFO = "seekrit/wrap-dek/v1";
@@ -159,10 +160,15 @@ export async function decryptSecret(dek: Uint8Array, blob: string, aad: string):
  * Decrypt every layer and merge by precedence. Layers arrive lowest precedence
  * first (composed groups, then the app environment); later layers overwrite
  * earlier ones on a name collision.
+ *
+ * `${OTHER_SECRET}` references are then expanded over the merged result (so a
+ * reference sees whichever layer won the name) — pass `{ interpolate: false }`
+ * to get the stored text instead.
  */
 export async function materialize(
   response: ResolveResponse,
   key: TokenKey,
+  options: { interpolate?: boolean } = {},
 ): Promise<Record<string, string>> {
   const merged: Record<string, string> = {};
   for (const layer of response.layers) {
@@ -175,5 +181,5 @@ export async function materialize(
       );
     }
   }
-  return merged;
+  return options.interpolate === false ? merged : interpolateSecrets(merged).values;
 }
