@@ -71,6 +71,40 @@ slices). `with` pulls a different environment slice of a composed group.
 
 `resolve()` is **fail-closed**: it rejects rather than returning partial results.
 
+## Hold a placeholder instead of a key
+
+`@seekrit/sdk/fetch` substitutes `{{seekrit:NAME}}` placeholders into outbound
+requests, so a provider key is never in your source, your `.env`, or
+`process.env`:
+
+```ts
+import { createOpenAI } from "@ai-sdk/openai";
+import { seekritFetch } from "@seekrit/sdk/fetch";
+
+const openai = createOpenAI({
+  apiKey: "{{seekrit:OPENAI_API_KEY}}",
+  fetch: seekritFetch({ allow: { "api.openai.com": ["OPENAI_API_KEY"] } }),
+});
+```
+
+The allowlist is the boundary, and it is default-deny: a name that is not
+permitted toward that host, method, and path is refused, and so is a name that
+did not resolve. Neither sends the request.
+
+A refusal answers with the same **403** the proxy answers with, carrying
+`x-seekrit-refusal` and the secret's name but never its value. That is on
+purpose: a provider SDK wraps anything its HTTP layer raises into an opaque
+connection error *and retries it*, so raising would turn a denied placeholder
+into "Connection error" after six attempts. Ask for `refusal: "throw"` to get the typed
+error instead.
+
+Because it runs in your process, this is a weaker boundary than the
+[egress proxy](https://seekrit.dev/docs/guides/agent-proxy) — the same
+placeholder, substituted in a separate process. What it does buy: the value
+exists only inside one HTTP call, so it never reaches model context, a tool
+result, or a trace exporter. Full trade-off:
+<https://seekrit.dev/docs/guides/agent-proxy/in-process>.
+
 ## Secret references
 
 A secret's value may reference another with `${OTHER_SECRET}`. References are

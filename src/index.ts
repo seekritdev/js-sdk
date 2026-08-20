@@ -19,8 +19,10 @@ export {
   SeekritApiError,
   SeekritCryptoError,
   SeekritReferenceError,
+  SeekritSubstitutionError,
   type CryptoErrorCode,
   type ReferenceErrorCode,
+  type SubstitutionErrorCode,
 } from "./errors.js";
 export { interpolateSecrets, type InterpolationResult } from "./interpolate.js";
 export type {

@@ -17,6 +17,7 @@ import {
   SeekritReferenceError,
   TokenKey,
 } from "../dist/index.js";
+import { SeekritSubstitutionError, substitute } from "../dist/fetch.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const vectors = JSON.parse(readFileSync(join(here, "..", "testdata", "vectors.json"), "utf8"));
@@ -87,6 +88,35 @@ for (const testCase of vectors.interpolation.cases) {
 for (const testCase of vectors.interpolation.cycles) {
   await check(`interpolation rejects: ${testCase.name}`, () => {
     assert.throws(() => interpolateSecrets(testCase.input), SeekritReferenceError);
+  });
+}
+
+// Placeholder substitution — the same cases the Rust proxy asserts against
+// this file (apps/proxy/tests/substitution_vectors.rs). The lookup is the one
+// the fixture's `note` prescribes: `denied` wins, then `values`, then unknown.
+for (const testCase of vectors.substitution.cases) {
+  await check(`substitution: ${testCase.name}`, () => {
+    const denied = new Set(testCase.denied ?? []);
+    const lookup = (name) => {
+      if (denied.has(name)) return { kind: "denied" };
+      const value = testCase.values[name];
+      return value === undefined ? { kind: "unknown" } : { kind: "value", value };
+    };
+    if (testCase.error) {
+      assert.throws(
+        () => substitute(testCase.input, lookup),
+        (err) => {
+          assert.ok(err instanceof SeekritSubstitutionError);
+          assert.equal(err.code, testCase.error.code);
+          assert.equal(err.secretName, testCase.error.name);
+          return true;
+        },
+      );
+      return;
+    }
+    const { text, names } = substitute(testCase.input, lookup);
+    assert.equal(text, testCase.expected);
+    assert.deepEqual(names, testCase.names);
   });
 }
 

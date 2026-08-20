@@ -55,3 +55,34 @@ export class SeekritApiError extends SeekritError {
     this.code = code;
   }
 }
+
+/** Why a `{{seekrit:NAME}}` placeholder could not be substituted. */
+export type SubstitutionErrorCode =
+  /** The allowlist does not permit this name toward this upstream. */
+  | "denied"
+  /** Permitted, but the token resolved no secret by that name. */
+  | "unresolved";
+
+/**
+ * A placeholder could not be substituted, so the request was not sent.
+ *
+ * Both cases are fail-closed on purpose: forwarding the literal placeholder
+ * would leak an internal name to the upstream, and substituting anyway would
+ * hand a credential to a host that is not allowed to have it. Carries the
+ * secret's *name* — never its value.
+ */
+export class SeekritSubstitutionError extends SeekritError {
+  readonly code: SubstitutionErrorCode;
+  /** The placeholder name that failed. Safe to log. */
+  readonly secretName: string;
+  constructor(code: SubstitutionErrorCode, secretName: string, detail?: string) {
+    super(
+      code === "denied"
+        ? `secret ${secretName} is not allowed toward this upstream${detail ? ` (${detail})` : ""}`
+        : `secret ${secretName} is allowed but did not resolve`,
+    );
+    this.name = "SeekritSubstitutionError";
+    this.code = code;
+    this.secretName = secretName;
+  }
+}
