@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/mileszim/seekrit/compare/sdk-js-v0.4.0...sdk-js-v0.5.0) (2026-08-20)
+
+
+### Features
+
+* **sdk-js:** Mastra adapter — per-request credentials and per-tool scoping ([#255](https://github.com/mileszim/seekrit/issues/255)) ([857a7a3](https://github.com/mileszim/seekrit/commit/857a7a3bb70521cecbb3145dc8428f6e8dbaed5f))
+
 ## [0.4.0](https://github.com/mileszim/seekrit/compare/sdk-js-v0.3.0...sdk-js-v0.4.0) (2026-08-20)
 
 
