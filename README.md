@@ -105,6 +105,31 @@ exists only inside one HTTP call, so it never reaches model context, a tool
 result, or a trace exporter. Full trade-off:
 <https://seekrit.dev/docs/guides/agent-proxy/in-process>.
 
+### Mastra
+
+`@seekrit/sdk/mastra` returns the function form of Mastra's `model`, so each
+request can resolve its own tenant's credentials without rebuilding the model:
+
+```ts
+import { createOpenAI } from "@ai-sdk/openai";
+import { seekritModel } from "@seekrit/sdk/mastra";
+
+model: seekritModel(
+  ({ apiKey, fetch }) => createOpenAI({ apiKey, fetch })("gpt-5.6-sol"),
+  {
+    secret: "OPENAI_API_KEY",
+    allow: { "api.openai.com": ["OPENAI_API_KEY"] },
+    scope: (rc) => ({ with: { tenants: String(rc.get("tenant")) } }),
+  },
+)
+```
+
+Also exports `seekritRequestContext` (server middleware that lifts a tenant
+header into the request context) and `seekritToolFetch` (a `fetch` narrowed to a
+single tool's secrets). Nothing here imports `@mastra/core` — every Mastra shape
+is typed structurally, so `@seekrit/sdk` stays dependency-free. Details:
+<https://seekrit.dev/docs/guides/frameworks/mastra>.
+
 ## Secret references
 
 A secret's value may reference another with `${OTHER_SECRET}`. References are

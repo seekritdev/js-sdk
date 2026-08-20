@@ -55,8 +55,16 @@ export interface SeekritFetchOptions {
   token?: string;
   /** API base URL. Defaults to `$SEEKRIT_API_URL`. */
   apiUrl?: string;
-  /** A pre-built client, used when no per-request `with` scope is in play. */
-  client?: Seekrit;
+  /**
+   * Where resolved values come from.
+   *
+   * A single client is bound to one set of group overrides at construction, so
+   * it can only serve scopes that do not re-scope: pass a **function** when
+   * `scope` returns `with` overrides, and it is called with those overrides to
+   * produce the right client. Omit this entirely and a client is built from
+   * `token` / `$SEEKRIT_TOKEN` per scope.
+   */
+  client?: ResolveSource | ((withOverrides: Record<string, string> | undefined) => ResolveSource);
   /** Called once per request to narrow the resolve and the allowlist. */
   scope?: () => SeekritFetchScope | undefined;
   /**
@@ -95,6 +103,11 @@ export interface SeekritFetchOptions {
   onRefuse?: (error: SeekritSubstitutionError) => void;
   /** Notified after a successful substitution. Names only — never values. */
   onInject?: (event: { host: string; method: string; path: string; names: string[] }) => void;
+}
+
+/** The one method a resolve source must have. `Seekrit` satisfies it. */
+export interface ResolveSource {
+  resolve(): Promise<Record<string, string>>;
 }
 
 type BodyInit_ = RequestInit["body"];
@@ -179,21 +192,45 @@ export function seekritFetch(options: SeekritFetchOptions = {}): typeof globalTh
     const now = Date.now();
     if (hit && hit.expires > now) return hit.values;
 
-    const client =
-      !withOverrides && options.client
-        ? options.client
-        : new Seekrit({
-            token: options.token,
-            apiUrl: options.apiUrl,
-            with: withOverrides,
-            fetch: send,
-          });
-    const values = client.resolve().catch((error: unknown) => {
-      cache.delete(key); // never cache a failure
-      throw error;
-    });
+    const values = clientFor(withOverrides)
+      .resolve()
+      .catch((error: unknown) => {
+        cache.delete(key); // never cache a failure
+        throw error;
+      });
     if (ttlMs > 0) cache.set(key, { expires: now + ttlMs, values });
     return values;
+  }
+
+  /**
+   * The resolve source for one scope.
+   *
+   * The awkward case is a caller who passed a single `client` *and* a scope with
+   * group overrides: that client is bound to its own overrides and cannot be
+   * re-scoped, so silently using it would resolve the wrong tenant. If a token
+   * is available we build a correctly-scoped client; if not, say exactly that
+   * rather than surfacing "no service token" from three frames down.
+   */
+  function clientFor(withOverrides: Record<string, string> | undefined): ResolveSource {
+    if (typeof options.client === "function") return options.client(withOverrides);
+    if (options.client && !withOverrides) return options.client;
+    try {
+      return new Seekrit({
+        token: options.token,
+        apiUrl: options.apiUrl,
+        with: withOverrides,
+        fetch: send,
+      });
+    } catch (cause) {
+      if (options.client) {
+        throw new SeekritError(
+          "a scope with group overrides cannot reuse a single `client`, which is bound to its " +
+            "own overrides: pass `client` as a function of the overrides, or pass `token` so a " +
+            "scoped client can be built",
+        );
+      }
+      throw cause;
+    }
   }
 
   /** Substitute and send. Throws {@link SeekritSubstitutionError} on a refusal. */
@@ -305,6 +342,7 @@ function narrow(rules: AllowRule[], names: string[]): AllowRule[] {
 // a test double, or an allowlist derived from a verified policy bundle).
 export {
   hasPlaceholder,
+  placeholder,
   substitute,
   type Lookup,
   type SubstitutionOutcome,

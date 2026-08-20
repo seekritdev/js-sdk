@@ -15,7 +15,7 @@
  * The rules are pinned by the shared golden fixture (`testdata/vectors.json`,
  * `substitution`), which the Rust proxy asserts against the same file.
  */
-import { SeekritSubstitutionError } from "./errors.js";
+import { SeekritError, SeekritSubstitutionError } from "./errors.js";
 
 const OPEN = "{{seekrit:";
 const CLOSE = "}}";
@@ -90,6 +90,21 @@ export function substitute(input: string, lookup: (name: string) => Lookup): Sub
   }
 
   return { text: out, names: [...names].sort() };
+}
+
+/**
+ * Build the placeholder for a secret name: `placeholder("OPENAI_API_KEY")` is
+ * `"{{seekrit:OPENAI_API_KEY}}"`. One place that knows the syntax, and it
+ * rejects a name the engine would not recognise rather than silently emitting
+ * text that gets forwarded to the upstream as-is.
+ */
+export function placeholder(name: string): string {
+  if (!isValidName(name)) {
+    throw new SeekritError(
+      `${JSON.stringify(name)} is not a usable secret name: use [A-Za-z0-9_]+`,
+    );
+  }
+  return `${OPEN}${name}${CLOSE}`;
 }
 
 /** Whether `text` contains at least one syntactically valid placeholder. */
