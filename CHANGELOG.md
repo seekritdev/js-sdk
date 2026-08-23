@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/mileszim/seekrit/compare/sdk-js-v0.6.0...sdk-js-v0.7.0) (2026-08-23)
+
+
+### Features
+
+* **sdk-js:** Cloudflare Computer egress gateway, with signed policy ([#268](https://github.com/mileszim/seekrit/issues/268)) ([e8703bc](https://github.com/mileszim/seekrit/commit/e8703bc0c52fcc013da0c5f204127fc2c42d9270))
+
 ## [0.6.0](https://github.com/mileszim/seekrit/compare/sdk-js-v0.5.0...sdk-js-v0.6.0) (2026-08-23)
 
 
