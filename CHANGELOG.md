@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/mileszim/seekrit/compare/sdk-js-v0.5.0...sdk-js-v0.6.0) (2026-08-23)
+
+
+### Features
+
+* **sdk-js:** React integration — server-component reads and a placeholder route handler ([#269](https://github.com/mileszim/seekrit/issues/269)) ([3dcc839](https://github.com/mileszim/seekrit/commit/3dcc839a11345eddd35a8316f4d990331bc931e8))
+* **sdk-js:** Vite plugin that resolves an environment into the build ([#270](https://github.com/mileszim/seekrit/issues/270)) ([306a96a](https://github.com/mileszim/seekrit/commit/306a96ac7e9e6e0b5e89893874c89774b6854af6))
+
 ## [0.5.0](https://github.com/mileszim/seekrit/compare/sdk-js-v0.4.0...sdk-js-v0.5.0) (2026-08-20)
 
 
