@@ -30,6 +30,10 @@
       "types": "./dist/route.d.ts",
       "browser": "./dist/route.browser.js",
       "default": "./dist/route.js"
+    },
+    "./cloudflare-computer": {
+      "types": "./dist/cloudflare-computer.d.ts",
+      "default": "./dist/cloudflare-computer.js"
     }
   },
   "files": [
@@ -46,7 +50,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node test/vectors.test.mjs && node test/fetch.test.mjs && node test/mastra.test.mjs && node test/vite.test.mjs && node test/react.test.mjs && node test/route.test.mjs",
+    "test": "npm run build && node test/vectors.test.mjs && node test/fetch.test.mjs && node test/mastra.test.mjs && node test/vite.test.mjs && node test/react.test.mjs && node test/route.test.mjs && node test/cloudflare-computer.test.mjs && node test/policy-vectors.test.mjs && node test/policy-source.test.mjs",
     "prepack": "npm run build"
   },
   "keywords": [

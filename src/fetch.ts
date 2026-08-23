@@ -25,9 +25,10 @@
  * firewall, and silently blocking unrelated traffic would be a worse lie than
  * not blocking it.
  */
-import { Seekrit } from "./client.js";
 import { SeekritError, SeekritSubstitutionError } from "./errors.js";
 import { type AllowRule, evaluate, rulesFromAllow } from "./policy.js";
+import { refusalResponse } from "./refusal.js";
+import { type ClientSource, createResolver, type ResolveSource } from "./resolver.js";
 import { hasPlaceholder, type Lookup, substitute } from "./substitute.js";
 
 /** Per-request narrowing, returned by {@link SeekritFetchOptions.scope}. */
@@ -64,7 +65,7 @@ export interface SeekritFetchOptions {
    * produce the right client. Omit this entirely and a client is built from
    * `token` / `$SEEKRIT_TOKEN` per scope.
    */
-  client?: ResolveSource | ((withOverrides: Record<string, string> | undefined) => ResolveSource);
+  client?: ClientSource;
   /** Called once per request to narrow the resolve and the allowlist. */
   scope?: () => SeekritFetchScope | undefined;
   /**
@@ -105,32 +106,7 @@ export interface SeekritFetchOptions {
   onInject?: (event: { host: string; method: string; path: string; names: string[] }) => void;
 }
 
-/** The one method a resolve source must have. `Seekrit` satisfies it. */
-export interface ResolveSource {
-  resolve(): Promise<Record<string, string>>;
-}
-
 type BodyInit_ = RequestInit["body"];
-
-/** Mirrors `Reject::into_response` in `apps/proxy/src/proxy.rs`, verbatim. */
-function refusalBody(error: SeekritSubstitutionError): string {
-  return error.code === "denied"
-    ? `placeholder {{seekrit:${error.secretName}}} is not allowed toward this upstream`
-    : `placeholder {{seekrit:${error.secretName}}} references a secret that is not available`;
-}
-
-function refusalResponse(error: SeekritSubstitutionError): Response {
-  return new Response(refusalBody(error), {
-    status: 403,
-    statusText: "Forbidden",
-    headers: {
-      "content-type": "text/plain; charset=utf-8",
-      // Machine-checkable, so a caller can tell our refusal from an upstream 403.
-      "x-seekrit-refusal": error.code,
-      "x-seekrit-secret": error.secretName,
-    },
-  });
-}
 
 /** A body we can scan without consuming a stream. */
 function readableBody(body: BodyInit_): string | undefined {
@@ -172,7 +148,6 @@ export function seekritFetch(options: SeekritFetchOptions = {}): typeof globalTh
     throw new SeekritError("seekritFetch needs an allowlist: pass { allow } or { rules }");
   }
 
-  const ttlMs = Math.max(0, options.ttlSeconds ?? 60) * 1000;
   const scanBody = options.body ?? true;
   const refusalMode = options.refusal ?? "respond";
   // Captured now, so installing this function as the global fetch cannot make
@@ -183,55 +158,13 @@ export function seekritFetch(options: SeekritFetchOptions = {}): typeof globalTh
   }
   const send = plainFetch.bind(globalThis);
 
-  const cache = new Map<string, { expires: number; values: Promise<Record<string, string>> }>();
-
-  function resolveFor(scope: SeekritFetchScope | undefined): Promise<Record<string, string>> {
-    const withOverrides = scope?.with;
-    const key = withOverrides ? JSON.stringify(Object.entries(withOverrides).sort()) : "";
-    const hit = cache.get(key);
-    const now = Date.now();
-    if (hit && hit.expires > now) return hit.values;
-
-    const values = clientFor(withOverrides)
-      .resolve()
-      .catch((error: unknown) => {
-        cache.delete(key); // never cache a failure
-        throw error;
-      });
-    if (ttlMs > 0) cache.set(key, { expires: now + ttlMs, values });
-    return values;
-  }
-
-  /**
-   * The resolve source for one scope.
-   *
-   * The awkward case is a caller who passed a single `client` *and* a scope with
-   * group overrides: that client is bound to its own overrides and cannot be
-   * re-scoped, so silently using it would resolve the wrong tenant. If a token
-   * is available we build a correctly-scoped client; if not, say exactly that
-   * rather than surfacing "no service token" from three frames down.
-   */
-  function clientFor(withOverrides: Record<string, string> | undefined): ResolveSource {
-    if (typeof options.client === "function") return options.client(withOverrides);
-    if (options.client && !withOverrides) return options.client;
-    try {
-      return new Seekrit({
-        token: options.token,
-        apiUrl: options.apiUrl,
-        with: withOverrides,
-        fetch: send,
-      });
-    } catch (cause) {
-      if (options.client) {
-        throw new SeekritError(
-          "a scope with group overrides cannot reuse a single `client`, which is bound to its " +
-            "own overrides: pass `client` as a function of the overrides, or pass `token` so a " +
-            "scoped client can be built",
-        );
-      }
-      throw cause;
-    }
-  }
+  const resolver = createResolver({
+    token: options.token,
+    apiUrl: options.apiUrl,
+    client: options.client,
+    ttlSeconds: options.ttlSeconds,
+    fetch: send,
+  });
 
   /** Substitute and send. Throws {@link SeekritSubstitutionError} on a refusal. */
   async function inject(
@@ -245,7 +178,7 @@ export function seekritFetch(options: SeekritFetchOptions = {}): typeof globalTh
     const method = (init?.method ?? (isRequestLike(input) ? input.method : "GET")).toUpperCase();
     const scope = options.scope?.();
     const rules = scope?.allow ? narrow(staticRules, scope.allow) : staticRules;
-    const values = await resolveFor(scope);
+    const values = await resolver(scope?.with);
 
     const injected = new Set<string>();
     const lookup = (name: string): Lookup => {
@@ -347,6 +280,22 @@ export {
   type Lookup,
   type SubstitutionOutcome,
 } from "./substitute.js";
+export type { ClientSource, ResolveSource } from "./resolver.js";
+// A verified bundle's `rules` are the wire shape above, so the verifier lives
+// alongside the thing that consumes it.
+export {
+  checkPolicyBundleContext,
+  checkPolicyCeiling,
+  parsePolicyBundleUnverified,
+  policySignerThumbprint,
+  SeekritPolicyError,
+  verifyPolicyBundle,
+  type PolicyBundle,
+  type PolicyBundleRule,
+  type PolicyCeiling,
+  type PolicySigner,
+  type PolicySignerJwk,
+} from "./policy-bundle.js";
 export {
   evaluate,
   matchPath,

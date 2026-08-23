@@ -130,6 +130,68 @@ single tool's secrets). Nothing here imports `@mastra/core` — every Mastra sha
 is typed structurally, so `@seekrit/sdk` stays dependency-free. Details:
 <https://seekrit.dev/docs/guides/frameworks/mastra>.
 
+### Cloudflare Computer
+
+`@seekrit/sdk/cloudflare-computer` turns the Workspace's egress hook into the
+proxy: the sandbox holds placeholders, your Worker holds the credentials.
+
+```ts
+import { seekritEgress, seekritEgressPolicy, seekritEnv } from "@seekrit/sdk/cloudflare-computer";
+
+export class SeekritGateway extends WorkerEntrypoint<Env> {
+  #egress = seekritEgress({
+    token: this.env.SEEKRIT_TOKEN,
+    allow: { "api.openai.com": ["OPENAI_API_KEY"] },
+  });
+  override fetch(request: Request) {
+    return this.#egress.fetch(request);
+  }
+}
+
+// on the Durable Object that owns the Workspace
+readonly egress = seekritEgressPolicy(this.ctx.exports.SeekritGateway({}), "v1");
+
+// and the command that runs inside it
+using run = await ws.runtime.exec(
+  'curl -sS -H "Authorization: Bearer $OPENAI_API_KEY" https://api.openai.com/v1/models',
+  { env: seekritEnv(["OPENAI_API_KEY"]) },
+);
+```
+
+Cloudflare Computer routes every backend's egress — the container's `curl`, the
+worker shell's, and `fetch` in the JavaScript isolate — through one `Fetcher`,
+as already-parsed requests. So this is the proxy's boundary without the proxy's
+setup: no sidecar, no `HTTPS_PROXY`, no local CA. It is default-deny on the
+operation as well as the secret, so it is an egress firewall and not only a
+credential shim, and unlike the in-process shim above the workload cannot reach
+around it. `resolveEnv()` covers the other case — your own build or migration,
+where the command must hold the value.
+
+Rules can also come from a **signed `ap1.` policy bundle** instead of from
+source, so a narrowing published from the dashboard reaches a deployed Worker
+without a redeploy:
+
+```ts
+seekritEgress({
+  token: env.SEEKRIT_TOKEN,
+  policy: {
+    signers: env.POLICY_SIGNERS.split(','),   // the trust anchor, from your config
+    agent: 'nova',
+    ceiling: { 'api.openai.com': ['OPENAI_API_KEY'] },
+    store: {                                   // optional: shared across isolates
+      get: (key) => env.POLICY_KV.get(key),
+      put: (key, envelope, ttl) => env.POLICY_KV.put(key, envelope, { expirationTtl: ttl }),
+    },
+    waitUntil: (p) => ctx.waitUntil(p),
+  },
+});
+```
+
+The bundle is signed in the browser, so the API serves bytes it cannot forge and
+nothing is enforced until the signature checks out against signers you pinned.
+`verifyPolicyBundle` is exported on its own if you want to verify one yourself;
+it is pinned to the same golden vectors as the Rust verifier the proxy uses.
+Details: <https://seekrit.dev/docs/guides/sandboxes/cloudflare-computer>.
 ## React and Next.js
 
 `@seekrit/sdk/react` reads secrets in a **server component**, once per render:
