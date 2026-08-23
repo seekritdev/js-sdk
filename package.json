@@ -16,6 +16,10 @@
     "./mastra": {
       "types": "./dist/mastra.d.ts",
       "default": "./dist/mastra.js"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "default": "./dist/vite.js"
     }
   },
   "files": [
@@ -29,7 +33,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node test/vectors.test.mjs && node test/fetch.test.mjs && node test/mastra.test.mjs",
+    "test": "npm run build && node test/vectors.test.mjs && node test/fetch.test.mjs && node test/mastra.test.mjs && node test/vite.test.mjs",
     "prepack": "npm run build"
   },
   "keywords": [

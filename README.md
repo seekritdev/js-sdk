@@ -130,6 +130,32 @@ single tool's secrets). Nothing here imports `@mastra/core` — every Mastra sha
 is typed structurally, so `@seekrit/sdk` stays dependency-free. Details:
 <https://seekrit.dev/docs/guides/frameworks/mastra>.
 
+## Vite
+
+`@seekrit/sdk/vite` resolves your environment from inside `vite.config.ts`, so
+the dev server, the build, and Vitest all get it with no wrapper command:
+
+```ts
+import { defineConfig } from "vite";
+import { seekritVite } from "@seekrit/sdk/vite";
+
+export default defineConfig({
+  plugins: [seekritVite()],
+});
+```
+
+Values land in `process.env` before Vite reads its own environment, so
+`import.meta.env` works for the prefixed names and everything else stays
+server-side. Vite's `envPrefix` is the line between the two and the plugin never
+crosses it: `expose` can narrow which `VITE_*` names reach the bundle
+(`"prefixed"`, `"none"`, or a list), and a non-prefixed name can't be published
+at all. Authentication is `$SEEKRIT_TOKEN` if set, otherwise the `seekrit` CLI's
+login session. Details, framework notes, and the options table:
+<https://seekrit.dev/docs/guides/vite>.
+
+This entry point runs in the Vite process (Node, Bun, or Deno) — it is the one
+part of the package that is not browser- or Worker-safe.
+
 ## Secret references
 
 A secret's value may reference another with `${OTHER_SECRET}`. References are
