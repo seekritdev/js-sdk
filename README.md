@@ -130,6 +130,57 @@ single tool's secrets). Nothing here imports `@mastra/core` — every Mastra sha
 is typed structurally, so `@seekrit/sdk` stays dependency-free. Details:
 <https://seekrit.dev/docs/guides/frameworks/mastra>.
 
+## React and Next.js
+
+`@seekrit/sdk/react` reads secrets in a **server component**, once per render:
+
+```tsx
+import { secret } from "@seekrit/sdk/react";
+
+export default async function Page() {
+  const key = await secret("STRIPE_KEY");
+  const charges = await listCharges(key);
+  return <Charges rows={charges} />;   // the key does not cross the boundary
+}
+```
+
+The resolve is wrapped in React's `cache`, so a page whose components each ask
+for a secret still makes one `/v1/resolve` call. Every value is also passed to
+React's taint API, so passing one to a client component throws *during render*
+instead of serializing it into the RSC payload — enable it with
+`experimental: { taint: true }` in `next.config`, and ask for `taint: "require"`
+to make a missing taint API an error rather than a warning.
+
+There is no client hook, because a `skt_` service token in a client bundle is a
+published credential. For a call the browser has to make itself, keep the
+placeholder on the client and substitute it in a route handler:
+
+```ts
+// app/api/openai/[...path]/route.ts
+import { seekritRoute } from "@seekrit/sdk/route";
+import { auth } from "@/auth";
+
+export const { GET, POST } = seekritRoute({
+  upstream: "https://api.openai.com",
+  allow: { "api.openai.com": ["OPENAI_API_KEY"] },
+  authorize: async (request) => (await auth(request)) !== null,
+});
+```
+
+```ts
+// on the client — no key in the bundle
+const openai = createOpenAI({ baseURL: "/api/openai/v1", apiKey: "{{seekrit:OPENAI_API_KEY}}" });
+```
+
+`authorize` is required and has no default: this handler is reachable from the
+internet under your own cookies, so an unauthenticated one is an open credential
+proxy. It also drops `cookie` and any non-placeholder `authorization` on the way
+out, strips `set-cookie` on the way back, and — unlike `seekritFetch` — gates
+*every* request against the allowlist's `methods` and `paths`, not only the ones
+carrying a placeholder. Both entrypoints are server-only and refuse to load in a
+client bundle. Details:
+<https://seekrit.dev/docs/guides/react>.
+
 ## Vite
 
 `@seekrit/sdk/vite` resolves your environment from inside `vite.config.ts`, so

@@ -1,7 +1,7 @@
 {
   "name": "@seekrit/sdk",
   "version": "0.5.0",
-  "description": "Read-path SDK for seekrit — resolve and decrypt secrets client-side with a service token. Runs on Node, Bun, Deno, browsers, and Cloudflare Workers.",
+  "description": "Read-path SDK for seekrit \u2014 resolve and decrypt secrets client-side with a service token. Runs on Node, Bun, Deno, browsers, and Cloudflare Workers.",
   "type": "module",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -20,6 +20,16 @@
     "./vite": {
       "types": "./dist/vite.d.ts",
       "default": "./dist/vite.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "browser": "./dist/react.browser.js",
+      "default": "./dist/react.js"
+    },
+    "./route": {
+      "types": "./dist/route.d.ts",
+      "browser": "./dist/route.browser.js",
+      "default": "./dist/route.js"
     }
   },
   "files": [
@@ -29,11 +39,14 @@
   "engines": {
     "node": ">=18"
   },
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/react.browser.js",
+    "./dist/route.browser.js"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node test/vectors.test.mjs && node test/fetch.test.mjs && node test/mastra.test.mjs && node test/vite.test.mjs",
+    "test": "npm run build && node test/vectors.test.mjs && node test/fetch.test.mjs && node test/mastra.test.mjs && node test/vite.test.mjs && node test/react.test.mjs && node test/route.test.mjs",
     "prepack": "npm run build"
   },
   "keywords": [
@@ -51,6 +64,17 @@
     "url": "git+https://github.com/seekritdev/js-sdk.git"
   },
   "devDependencies": {
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "typescript": "^5.6.0"
+  },
+  "peerDependencies": {
+    "react": ">=18.3.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
   }
 }

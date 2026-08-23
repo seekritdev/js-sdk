@@ -35,7 +35,8 @@
  * substitution. Pointing its `url` at the [proxy](https://seekrit.dev/docs/guides/agent-proxy)
  * is the other way to hold a placeholder there, and a stronger one.
  */
-import { seekritFetch, type SeekritFetchOptions, type SeekritFetchScope } from "./fetch.js";
+import type { SeekritFetchScope } from "./fetch.js";
+import { scopedFetch, type SharedFetchOptions } from "./scoped.js";
 import { placeholder } from "./substitute.js";
 
 /** The one method this adapter needs from Mastra's `RequestContext`. */
@@ -65,8 +66,6 @@ export interface SeekritModelCredentials {
   scope: SeekritFetchScope | undefined;
 }
 
-type SharedFetchOptions = Omit<SeekritFetchOptions, "scope">;
-
 export interface SeekritModelOptions extends SharedFetchOptions {
   /** The secret whose placeholder becomes `apiKey`. */
   secret: string;
@@ -89,43 +88,6 @@ export interface SeekritModelOptions extends SharedFetchOptions {
    * that, lower it to hold less in memory.
    */
   maxScopes?: number;
-}
-
-/** A stable key for a scope, so two equal scopes share one resolve. */
-function scopeKey(scope: SeekritFetchScope | undefined): string {
-  if (!scope) return "";
-  const withPart = scope.with ? JSON.stringify(Object.entries(scope.with).sort()) : "";
-  const allowPart = scope.allow ? JSON.stringify([...scope.allow].sort()) : "";
-  return `${withPart}|${allowPart}`;
-}
-
-/**
- * A `fetch` per distinct scope, LRU-bounded.
- *
- * This exists for one reason: `seekritFetch` caches a resolved set inside its
- * own closure, so building a fresh one per request would resolve on every
- * request and quietly undo the TTL. One instance per scope keeps the cache
- * while still isolating tenants from each other.
- */
-export function scopedFetch(options: SharedFetchOptions, maxScopes = 64) {
-  const cache = new Map<string, typeof globalThis.fetch>();
-  const limit = Math.max(1, maxScopes);
-  return (scope: SeekritFetchScope | undefined): typeof globalThis.fetch => {
-    const key = scopeKey(scope);
-    const hit = cache.get(key);
-    if (hit) {
-      cache.delete(key); // re-insert so iteration order is least-recent-first
-      cache.set(key, hit);
-      return hit;
-    }
-    const created = seekritFetch({ ...options, scope: () => scope });
-    cache.set(key, created);
-    if (cache.size > limit) {
-      const oldest = cache.keys().next();
-      if (!oldest.done) cache.delete(oldest.value);
-    }
-    return created;
-  };
 }
 
 /**
@@ -244,3 +206,5 @@ export function seekritRequestContext(options: { header?: string; key?: string }
 
 export { placeholder } from "./substitute.js";
 export type { SeekritFetchScope } from "./fetch.js";
+// `scopedFetch` used to live here; it now backs the React route handler too.
+export { scopedFetch, type SharedFetchOptions } from "./scoped.js";
