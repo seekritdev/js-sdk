@@ -294,3 +294,41 @@ CLI, `seekrit run`, and every other seekrit client. See
 ## License
 
 MIT
+
+## Vault — your users' credentials for your agent
+
+`@seekrit/sdk/vault` is the platform side of [seekrit Vault](https://seekrit.dev/docs/guides/vault):
+open a connect link for an end user, poll it, and make provider requests *as
+that user* through the executor in your own Cloudflare account. No credential
+ever exists in this process.
+
+```ts
+import { Vault } from "@seekrit/sdk/vault";
+
+const vault = new Vault(); // SEEKRIT_VAULT_KEY, VAULT_EXECUTOR_URL, VAULT_EXECUTOR_TOKEN
+
+const link = await vault.connect.create({ userRef: "u_123", providerId: "resend" });
+// text link.url to the user …
+
+const res = await vault.fetch({
+  userRef: "u_123",
+  connectionId,
+  request: { method: "POST", url: "https://api.resend.com/emails", body },
+});
+```
+
+The link's `x` and `k` (executor origin and key thumbprint) come from *your*
+executor, never from the API — see the [trust model](https://seekrit.dev/docs/concepts/vault).
+
+The same calls cover an OAuth provider (`providerId: "google-gmail"`): the
+person signs in with the provider from the Connect page, the executor keeps the
+tokens and refreshes them, and `vault.fetch` injects the access token — or
+substitutes `{{seekrit:ACCESS_TOKEN}}` where your request carries it.
+
+Sites with no API are browser sessions: `vault.browser.open()` hands you a
+signed-in Browser Run session for your own tools, `fill()` types a saved login
+field into the focused input (login origins only), `release()` saves the
+rotated session back. `vault.manage.create()` gives the person a page to see
+and disconnect what you hold for them; `vault.webhooks.create()` plus
+`verifyWebhook()` tell your backend when a connection becomes ready, needs
+re-authentication, or is revoked.
