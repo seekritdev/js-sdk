@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/mileszim/seekrit/compare/sdk-js-v0.7.0...sdk-js-v0.8.0) (2026-10-04)
+
+
+### Features
+
+* **vault:** end-user credential custody — API keys, logins, OAuth, browser sessions, webhooks ([#494](https://github.com/mileszim/seekrit/issues/494)) ([9ceb6de](https://github.com/mileszim/seekrit/commit/9ceb6de0325943b2ad0e3d2840b93e67d538071f))
+
 ## [0.7.0](https://github.com/mileszim/seekrit/compare/sdk-js-v0.6.0...sdk-js-v0.7.0) (2026-08-23)
 
 
