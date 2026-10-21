@@ -66,7 +66,10 @@
     "webcrypto"
   ],
   "license": "MIT",
-  "homepage": "https://seekrit.dev",
+  "homepage": "https://seekrit.dev/docs/guides/sdks",
+  "bugs": {
+    "url": "https://github.com/seekritdev/js-sdk/issues"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/seekritdev/js-sdk.git"
