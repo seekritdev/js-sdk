@@ -15,7 +15,7 @@ function world() {
   const client = new SeekritConnect({ workloadId: "wli_sdk", signingKey: pair.privateKey,
     issuer: "https://issuer.example", fetch: async (url, init) => {
       calls.push({ url, ...init });
-      assert.equal(init.redirect, "error");
+      assert.equal(init.redirect, "manual");
       assert.ok(!init.body.includes(pair.privateKey.d), "private key is never transmitted");
       if (url.endsWith("/oauth/token")) {
         const form = new URLSearchParams(init.body);
@@ -79,3 +79,28 @@ for (const issuer of ["http://issuer.example", "https://issuer.example/path", "h
   assert.throws(() => new SeekritConnect({ workloadId: "wli_sdk", signingKey: pair.privateKey, issuer }), /HTTPS origin/);
 }
 console.log("all connect SDK tests passed (signed assertions, session caching, scope forwarding, proxy responses, replay avoidance)");
+
+let platformCalls = 0;
+let platformExchanges = 0;
+let platformLifetime = 300;
+const platform = new SeekritConnect({ workloadId: "wli_platform", issuer: "https://issuer.example",
+  getPlatformToken: async () => `runtime-proof-${++platformCalls}`,
+  fetch: async (url, init) => {
+    if (url.endsWith("/oauth/token")) {
+      platformExchanges++;
+      const form = new URLSearchParams(init.body);
+      assert.equal(form.get("grant_type"), "urn:ietf:params:oauth:grant-type:token-exchange");
+      assert.equal(form.get("subject_token"), `runtime-proof-${platformCalls}`);
+      assert.equal(form.get("subject_token_type"), "urn:ietf:params:oauth:token-type:jwt");
+      assert.equal(form.get("client_assertion"), null);
+      return json({ access_token: "platform-session", expires_in: platformLifetime, token_type: "Bearer" });
+    }
+    assert.equal(init.headers.authorization, "Bearer platform-session");
+    return json({ accessToken: "oauth-access", scopes: ["read"], expiresAt: "2030-01-01T01:00:00Z" });
+  } });
+await Promise.all(Array.from({ length: 8 }, () => platform.getToken("ccn_oauth", { scopes: ["read"] })));
+assert.equal(platformCalls, 1);
+assert.equal(platformExchanges, 1);
+assert.throws(() => new SeekritConnect({ workloadId: "x" }), /Choose/);
+assert.throws(() => new SeekritConnect({ workloadId: "x", signingKey: pair.privateKey, getPlatformToken: () => "jwt" }), /Choose/);
+console.log("platform identity SDK tests passed (no enrollment key, token exchange, concurrent session reuse)");

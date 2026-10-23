@@ -352,4 +352,20 @@ const token = await connect.getToken("ccn_your_github_connection", {
 // token.accessToken is a temporary GitHub token; token.expiresAt is its actual expiry.
 ```
 
-The client caches short-lived Seekrit sessions and signs a fresh one-use assertion when refreshing. It never automatically retries connector requests. `createWorkloadKey()` generates an enrollment key pair; register only `publicKey` and keep `privateKey` on the workload. Federation audiences, grants, custody boundaries and operator setup are documented in [Workload identity and Connect](https://github.com/seekritdev/seekrit/blob/main/docs/workload-connect.md).
+The client caches short-lived Seekrit sessions. With key enrollment it signs a fresh one-use assertion when refreshing; with platform identity it calls `getPlatformToken` again. It never automatically retries connector requests. `createWorkloadKey()` generates an enrollment key pair; register only `publicKey` and keep `privateKey` on the workload. Federation audiences, grants, custody boundaries and operator setup are documented in [Workload identity and Connect](https://github.com/seekritdev/seekrit/blob/main/docs/workload-connect.md).
+
+
+Use an existing platform identity without an enrollment key:
+
+```ts
+const connect = new SeekritConnect({
+  workloadId: "wli_platform",
+  getPlatformToken: async () => obtainCurrentPlatformJwt(),
+});
+const oauth = await connect.getToken("ccn_oauth", { scopes: ["read"] });
+const response = await connect.proxy("ccn_custom_api", {
+  path: "/messages", method: "POST", body: JSON.stringify({ text: "Hello" }),
+});
+```
+
+Enroll an exact platform issuer/audience/subject policy before using this callback, and return a fresh platform JWT when requested. OAuth scope sets must exactly match the connection and workload grant. Custom API and OAuth connections use hosted broker custody, **not zero knowledge**: the broker can decrypt API keys, client secrets, and refresh tokens. Inbound federation removes the workload enrollment key; it does not remove the broker's provider credentials. See the [Connect guide](https://github.com/seekritdev/seekrit/blob/main/docs/workload-connect.md) for setup and supported provider behavior.
