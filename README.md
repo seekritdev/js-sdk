@@ -332,3 +332,24 @@ rotated session back. `vault.manage.create()` gives the person a page to see
 and disconnect what you hold for them; `vault.webhooks.create()` plus
 `verifyWebhook()` tell your backend when a connection becomes ready, needs
 re-authentication, or is revoked.
+
+## Workload Connect
+
+`@seekrit/sdk/connect` authenticates an enrolled workload to Seekrit's issuer, obtains scoped GitHub App installation tokens, and calls the Resend proxy without exposing its API key. This is a server-side client; never ship workload signing keys to a browser bundle.
+
+```ts
+import { SeekritConnect } from "@seekrit/sdk/connect";
+
+const connect = new SeekritConnect({
+  workloadId: "wli_your_workload",
+  issuer: "https://api.seekrit.dev",
+  signingKey: workloadPrivateJwk, // Load the enrollment key securely on the server.
+});
+const token = await connect.getToken("ccn_your_github_connection", {
+  repositoryIds: [123456],
+  permissions: { contents: "read" },
+});
+// token.accessToken is a temporary GitHub token; token.expiresAt is its actual expiry.
+```
+
+The client caches short-lived Seekrit sessions and signs a fresh one-use assertion when refreshing. It never automatically retries connector requests. `createWorkloadKey()` generates an enrollment key pair; register only `publicKey` and keep `privateKey` on the workload. Federation audiences, grants, custody boundaries and operator setup are documented in [Workload identity and Connect](https://github.com/seekritdev/seekrit/blob/main/docs/workload-connect.md).
