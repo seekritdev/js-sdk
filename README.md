@@ -265,6 +265,8 @@ crosses it: `expose` can narrow which `VITE_*` names reach the bundle
 at all. Authentication is `$SEEKRIT_TOKEN` (or the `token` option) if set.
 Without a token, the default plugin skips loading and leaves your existing
 environment variables and `.env` files working, so you can adopt it gradually.
+An empty token also skips loading; the default mode makes no API request and
+does not invoke the CLI when no token is configured.
 Use `source: "cli"` for a `seekrit login` session, or `source: "token"` to
 require a token. Configured sources still fail on resolution errors unless
 `optional: true` is set. Details, framework notes, and the options table:
