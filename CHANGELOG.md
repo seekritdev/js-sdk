@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/mileszim/seekrit/compare/sdk-js-v0.8.0...sdk-js-v0.8.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* **sdk-js:** release Vite plugin optional configuration fix ([#540](https://github.com/mileszim/seekrit/issues/540)) ([0655b06](https://github.com/mileszim/seekrit/commit/0655b062a492989a13560dd29c51abc6daafc820))
+
 ## [0.8.0](https://github.com/mileszim/seekrit/compare/sdk-js-v0.7.0...sdk-js-v0.8.0) (2026-10-04)
 
 
