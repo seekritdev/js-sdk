@@ -106,9 +106,9 @@ export interface SeekritViteOptions {
    * Where values come from (default `"auto"`).
    *
    * `"auto"` uses `$SEEKRIT_TOKEN` (or {@link token}) when one is set, and
-   * otherwise shells out to the `seekrit` CLI, which can resolve from your
-   * `seekrit login` session — so a teammate who has run `seekrit login` needs no
-   * token, and CI needs no CLI. `"token"` and `"cli"` pin one of the two.
+   * otherwise skips loading so existing environment variables and `.env` files
+   * keep working during gradual adoption. `"token"` requires a token; `"cli"`
+   * explicitly resolves through the CLI, which can use a `seekrit login` session.
    */
   source?: SeekritViteSource;
   /** `skt_…` service token. Defaults to `$SEEKRIT_TOKEN`. */
@@ -140,12 +140,14 @@ export interface SeekritViteOptions {
    */
   override?: boolean;
   /**
-   * Start anyway when resolving fails (default `false`).
+   * Start anyway when a configured source fails to resolve (default `false`).
    *
    * `seekrit run` is best-effort because the command it wraps may not need any
    * of this. A build is the opposite: shipping a bundle whose config silently
    * resolved to `undefined` is worse than not shipping one, so this fails loudly
    * instead. Set `true` for a project where the values are genuinely optional.
+   * With `source: "auto"`, a missing token always skips loading, regardless of
+   * this option. Use `source: "token"` to require configuration.
    */
   optional?: boolean;
   /** Limit the plugin to the dev server or to builds. Vite's own `apply`. */
@@ -240,19 +242,20 @@ async function loadFromCli(options: SeekritViteOptions): Promise<Record<string, 
   }
 }
 
-async function load(
-  options: SeekritViteOptions,
-): Promise<{ values: Record<string, string>; source: "token" | "cli" | "client" }> {
+type LoadResult = { values: Record<string, string>; source: "token" | "cli" | "client" };
+
+async function load(options: SeekritViteOptions): Promise<LoadResult | undefined> {
   if (options.client) return { values: await options.client.resolve(), source: "client" };
 
   const token = options.token ?? readEnv("SEEKRIT_TOKEN");
   const source = options.source ?? "auto";
-  if (source === "cli" || (source === "auto" && !token)) {
+  if (source === "cli") {
     return { values: await loadFromCli(options), source: "cli" };
   }
+  if (source === "auto" && !token) return undefined;
   if (!token) {
     throw new SeekritError(
-      'no service token: set SEEKRIT_TOKEN, pass { token }, or use source: "auto" (the default) to resolve through a `seekrit login` session instead',
+      'no service token: set SEEKRIT_TOKEN, pass { token }, or use source: "cli" to resolve through a `seekrit login` session instead',
     );
   }
   const client = new Seekrit({
@@ -290,7 +293,7 @@ export function seekritVite(options: SeekritViteOptions = {}): SeekritVitePlugin
   // Resolve at most once per plugin instance. Vite runs the `config` hook again
   // for the worker config, and a second round trip (or a second passphrase
   // prompt) for the same values would be a surprise.
-  let loading: Promise<{ values: Record<string, string>; source: "token" | "cli" | "client" }>;
+  let loading: Promise<LoadResult | undefined>;
   /** Prefixed names withheld from the bundle, injected once Vite has read env. */
   let deferred: Array<[string, string]> = [];
   let summary: string | undefined;
@@ -323,7 +326,9 @@ export function seekritVite(options: SeekritViteOptions = {}): SeekritVitePlugin
       let source: "token" | "cli" | "client";
       try {
         loading ??= load(options);
-        ({ values, source } = await loading);
+        const result = await loading;
+        if (!result) return;
+        ({ values, source } = result);
       } catch (error) {
         if (!options.optional) throw error;
         warning = `[seekrit] no secrets loaded: ${error instanceof Error ? error.message : String(error)}`;

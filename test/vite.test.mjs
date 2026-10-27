@@ -193,9 +193,74 @@ await check("the worker config pass reuses the first resolve, and reports once",
   assert.equal(events.length, 1);
 });
 
-await check("no token and no CLI is an error that says what to do", async () => {
+await check("unconfigured auto source leaves dev and build environments untouched", async () => {
+  for (const key of Object.keys(process.env)) {
+    if (key.startsWith("SEEKRIT_")) delete process.env[key];
+  }
+  process.env.PATH = mkdtempSync(join(tmpdir(), "seekrit-vite-empty-path-"));
+  process.env.VITE_API_URL = "https://existing.example.com";
+  process.env.DATABASE_URL = "postgres://existing/app";
+  const before = { ...process.env };
+  const events = [];
+  for (const command of ["serve", "build"]) {
+    for (const token of [undefined, ""]) {
+      if (token === undefined) delete process.env.SEEKRIT_TOKEN;
+      else process.env.SEEKRIT_TOKEN = token;
+      const plugin = seekritVite({ onLoad: (event) => events.push(event) });
+      const { clientEnv, log } = await runVite(plugin, { command });
+      await runVite(plugin, { command }); // worker config also skips
+      assert.equal(clientEnv.VITE_API_URL, before.VITE_API_URL);
+      assert.deepEqual(log.infos, []);
+      assert.deepEqual(log.warns, []);
+      delete process.env.SEEKRIT_TOKEN;
+      assert.deepEqual({ ...process.env }, before);
+    }
+  }
+  assert.deepEqual(events, []);
+});
+
+await check("auto does not invoke an installed CLI without a token", async () => {
   delete process.env.SEEKRIT_TOKEN;
-  const plugin = seekritVite({ cliPath: join(tmpdir(), "seekrit-does-not-exist-here") });
+  const dir = mkdtempSync(join(tmpdir(), "seekrit-vite-"));
+  const fake = join(dir, "seekrit");
+  writeFileSync(fake, "#!/bin/sh\nexit 3\n");
+  chmodSync(fake, 0o755);
+  process.env.PATH = dir;
+  await runVite(seekritVite({ source: "auto" }), { command: "build" });
+});
+
+await check("the token source requires a token", async () => {
+  delete process.env.SEEKRIT_TOKEN;
+  await assert.rejects(
+    () => runVite(seekritVite({ source: "token" }), { command: "build" }),
+    /no service token/,
+  );
+});
+
+await check("auto still rejects invalid configured tokens", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return new Response("unauthorized", { status: 401 });
+  };
+  try {
+    process.env.SEEKRIT_TOKEN = "invalid-token";
+    await assert.rejects(() => runVite(seekritVite(), { command: "build" }), SeekritError);
+    delete process.env.SEEKRIT_TOKEN;
+    await assert.rejects(
+      () => runVite(seekritVite({ token: "invalid-token" }), { command: "build" }),
+      SeekritError,
+    );
+    assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+await check("an explicitly selected missing CLI is an error that says what to do", async () => {
+  delete process.env.SEEKRIT_TOKEN;
+  const plugin = seekritVite({ source: "cli", cliPath: join(tmpdir(), "seekrit-does-not-exist-here") });
   await assert.rejects(() => runVite(plugin), (error) => {
     assert.ok(error instanceof SeekritError);
     assert.match(error.message, /is not on PATH/);
@@ -216,7 +281,7 @@ await check("the CLI source shells out to `seekrit export --format json`", async
 
   delete process.env.SEEKRIT_TOKEN;
   const { clientEnv, log } = await runVite(
-    seekritVite({ cliPath: fake, app: "storefront", env: "development", with: { shared: "prod" } }),
+    seekritVite({ source: "cli", cliPath: fake, app: "storefront", env: "development", with: { shared: "prod" } }),
   );
 
   const { readFileSync } = await import("node:fs");
@@ -242,7 +307,7 @@ await check("a CLI that fails is not silently an empty environment", async () =>
   writeFileSync(fake, "#!/bin/sh\nexit 3\n");
   chmodSync(fake, 0o755);
   delete process.env.SEEKRIT_TOKEN;
-  await assert.rejects(() => runVite(seekritVite({ cliPath: fake })), /exited with code 3/);
+  await assert.rejects(() => runVite(seekritVite({ source: "cli", cliPath: fake })), /exited with code 3/);
 });
 
 console.log(failures === 0 ? "\nvite: all good" : `\nvite: ${failures} failing`);

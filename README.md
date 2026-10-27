@@ -262,8 +262,12 @@ Values land in `process.env` before Vite reads its own environment, so
 server-side. Vite's `envPrefix` is the line between the two and the plugin never
 crosses it: `expose` can narrow which `VITE_*` names reach the bundle
 (`"prefixed"`, `"none"`, or a list), and a non-prefixed name can't be published
-at all. Authentication is `$SEEKRIT_TOKEN` if set, otherwise the `seekrit` CLI's
-login session. Details, framework notes, and the options table:
+at all. Authentication is `$SEEKRIT_TOKEN` (or the `token` option) if set.
+Without a token, the default plugin skips loading and leaves your existing
+environment variables and `.env` files working, so you can adopt it gradually.
+Use `source: "cli"` for a `seekrit login` session, or `source: "token"` to
+require a token. Configured sources still fail on resolution errors unless
+`optional: true` is set. Details, framework notes, and the options table:
 <https://seekrit.dev/docs/guides/vite>.
 
 This entry point runs in the Vite process (Node, Bun, or Deno) — it is the one
