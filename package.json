@@ -58,7 +58,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node test/vectors.test.mjs && node test/fetch.test.mjs && node test/mastra.test.mjs && node test/vite.test.mjs && node test/react.test.mjs && node test/route.test.mjs && node test/cloudflare-computer.test.mjs && node test/policy-vectors.test.mjs && node test/policy-source.test.mjs && node test/vault.test.mjs && node test/connect.test.mjs",
+    "test": "npm run build && node test/vectors.test.mjs && node test/token-wire.test.mjs && node test/fetch.test.mjs && node test/mastra.test.mjs && node test/vite.test.mjs && node test/react.test.mjs && node test/route.test.mjs && node test/cloudflare-computer.test.mjs && node test/policy-vectors.test.mjs && node test/policy-source.test.mjs && node test/vault.test.mjs && node test/connect.test.mjs",
     "prepack": "npm run build"
   },
   "keywords": [

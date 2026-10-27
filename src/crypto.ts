@@ -4,7 +4,7 @@
  * unchanged on Node, Bun, Deno, browsers, and Cloudflare Workers.
  *
  * Blob formats (all segments base64url, no padding):
- *   token       skt_<id>_<pkcs8 private key>
+ *   token       skt_<id>_v2.<auth secret>.<pkcs8 private key>
  *   wrapped DEK wd1.<ephemeral pub (raw SEC1)>.<hkdf salt>.<iv>.<ciphertext||tag>
  *   secret      sc1.<iv>.<ciphertext||tag>
  */
@@ -14,7 +14,7 @@ import type { ResolveResponse } from "./types.js";
 
 const HKDF_INFO = "seekrit/wrap-dek/v1";
 // Only the first two underscores are separators; the key segment may contain "_".
-const TOKEN_RE = /^(skt_[0-9A-Za-z]+)_([A-Za-z0-9_-]+)$/;
+const TOKEN_RE = /^(skt_[0-9A-Za-z]+)_(?:v2\.[A-Za-z0-9_-]{43}\.)?([A-Za-z0-9_-]+)$/;
 
 function utf8Encode(text: string): Uint8Array {
   return new TextEncoder().encode(text);
@@ -82,7 +82,7 @@ export class TokenKey {
 
   static async parse(token: string): Promise<TokenKey> {
     const match = TOKEN_RE.exec(token);
-    if (!match) {
+    if (!match || match[0] !== token) {
       throw new SeekritCryptoError("MALFORMED_TOKEN", "not a valid seekrit service token");
     }
     const [, tokenId, keyB64] = match as unknown as [string, string, string];
@@ -182,4 +182,17 @@ export async function materialize(
     }
   }
   return options.interpolate === false ? merged : interpolateSecrets(merged).values;
+}
+
+/** Extract only the independent auth credential. Never fall back to a raw token. */
+export function serviceTokenAuth(token: string): string {
+  const match = /^(skt_[0-9A-Za-z]+_v2\.[A-Za-z0-9_-]{43})(?:\.[A-Za-z0-9_-]+)?$/.exec(token);
+  const auth = match?.[1];
+  if (!match || match[0] !== token || !auth) {
+    throw new SeekritCryptoError(
+      "MALFORMED_TOKEN",
+      "a v2 service token is required for API access; replace legacy tokens in the dashboard",
+    );
+  }
+  return auth;
 }

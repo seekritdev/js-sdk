@@ -375,3 +375,12 @@ const response = await connect.proxy("ccn_custom_api", {
 ```
 
 Enroll an exact platform issuer/audience/subject policy before using this callback, and return a fresh platform JWT when requested. OAuth scope sets must exactly match the connection and workload grant. Custom API and OAuth connections use hosted broker custody, **not zero knowledge**: the broker can decrypt API keys, client secrets, and refresh tokens. Inbound federation removes the workload enrollment key; it does not remove the broker's provider credentials. See the [Connect guide](https://github.com/seekritdev/seekrit/blob/main/docs/workload-connect.md) for setup and supported provider behavior.
+
+## Service token v2
+
+Keep one `SEEKRIT_TOKEN`: `skt_<id>_v2.<auth-secret>.<private-key>`.
+The client sends only `skt_<id>_v2.<auth-secret>` to the API and uses the private
+key locally to decrypt. Legacy tokens are rejected before any API request;
+upgrade clients and replace legacy tokens through the dashboard. A stolen
+HTTP credential cannot decrypt environment payloads, but stealing the full
+local bundle still exposes the private key. Treat the full bundle as a secret.

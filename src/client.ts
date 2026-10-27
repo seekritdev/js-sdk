@@ -1,4 +1,4 @@
-import { materialize, TokenKey } from "./crypto.js";
+import { materialize, serviceTokenAuth, TokenKey } from "./crypto.js";
 import { SeekritApiError, SeekritError } from "./errors.js";
 import type { ResolveResponse } from "./types.js";
 
@@ -96,7 +96,7 @@ export class Seekrit {
     let response: Response;
     try {
       response = await this.fetchImpl(url, {
-        headers: { authorization: `Bearer ${this.token}`, accept: "application/json" },
+        headers: { authorization: `Bearer ${serviceTokenAuth(this.token)}`, accept: "application/json" },
       });
     } catch (cause) {
       throw new SeekritError(`resolve request failed: ${String(cause)}`);

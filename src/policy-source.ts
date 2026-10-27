@@ -1,3 +1,4 @@
+import { serviceTokenAuth } from "./crypto.js";
 /**
  * Keeping a verified policy bundle current inside a Worker.
  *
@@ -178,7 +179,7 @@ export function createPolicySource(options: PolicySourceOptions): PolicySource {
       "",
     );
     const headers: Record<string, string> = {
-      authorization: `Bearer ${token}`,
+      authorization: `Bearer ${serviceTokenAuth(token)}`,
       accept: "application/json",
     };
     // Conditional on purpose: a short refresh interval is affordable when the

@@ -10,6 +10,7 @@
 export { Seekrit, DEFAULT_API_URL, type SeekritOptions } from "./client.js";
 export {
   TokenKey,
+  serviceTokenAuth,
   decryptSecret,
   materialize,
   secretAad,

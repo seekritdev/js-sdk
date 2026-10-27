@@ -252,7 +252,7 @@ await check("auto still rejects invalid configured tokens", async () => {
       () => runVite(seekritVite({ token: "invalid-token" }), { command: "build" }),
       SeekritError,
     );
-    assert.equal(calls, 2);
+    assert.equal(calls, 0); // malformed tokens fail before HTTP
   } finally {
     globalThis.fetch = originalFetch;
   }
