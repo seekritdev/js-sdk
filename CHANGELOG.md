@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.0](https://github.com/mileszim/seekrit/compare/sdk-js-v0.9.0...sdk-js-v0.10.0) (2026-11-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* **sdk:** enforce rule ports in the JS and Python SDKs ([#562](https://github.com/mileszim/seekrit/issues/562))
+
+### Features
+
+* let agent policy rules name ports from the dashboard and CLI ([#561](https://github.com/mileszim/seekrit/issues/561)) ([42374f1](https://github.com/mileszim/seekrit/commit/42374f1ed7deea4afdfd9b00cbf61b0a292759d8))
+* **sdk:** enforce rule ports in the JS and Python SDKs ([#562](https://github.com/mileszim/seekrit/issues/562)) ([f9264ce](https://github.com/mileszim/seekrit/commit/f9264ce3300ee60b74cf6dd52d74af37e09c2cd3))
+
 ## [0.9.0](https://github.com/mileszim/seekrit/compare/sdk-js-v0.8.1...sdk-js-v0.9.0) (2026-10-27)
 
 
