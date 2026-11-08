@@ -130,6 +130,27 @@ await check("basePath derives the tail when the framework passes no params", asy
 
 // --- the boundary -----------------------------------------------------------
 
+await check("a configured upstream's port is not the caller's to choose, so rules do not narrow it", async () => {
+  // The proxy's reverse plane reads the same way: the operator wrote this
+  // upstream, port and scheme included, so a rule naming no ports still covers
+  // it — both at the operation gate and at the per-placeholder check.
+  const { handlers, seen } = route({
+    upstream: "http://localhost:11434",
+    allow: { localhost: ["OPENAI_API_KEY"] },
+  });
+  const response = await handlers.POST(
+    new Request("https://app.example.com/api/ollama/api/chat", {
+      method: "POST",
+      headers: { authorization: "Bearer {{seekrit:OPENAI_API_KEY}}" },
+      body: "{}",
+    }),
+    params("api", "chat"),
+  );
+  assert.equal(response.status, 200);
+  assert.equal(seen.url, "http://localhost:11434/api/chat");
+  assert.equal(seen.headers.authorization, `Bearer ${KEYS.OPENAI_API_KEY}`);
+});
+
 await check("authorize is required — no handler without one", async () => {
   assert.throws(
     () =>

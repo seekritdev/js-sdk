@@ -8,6 +8,7 @@
  * still isolating tenants from each other.
  */
 import { seekritFetch, type SeekritFetchOptions, type SeekritFetchScope } from "./fetch.js";
+import type { OPERATOR_FIXED_DESTINATION } from "./policy.js";
 
 /** A stable key for a set of group overrides, so two equal sets share a resolve. */
 export function withKey(overrides: Record<string, string> | undefined): string {
@@ -22,7 +23,10 @@ export function scopeKey(scope: SeekritFetchScope | undefined): string {
 }
 
 /** Options every scoped `fetch` shares — the scope itself is per request. */
-export type SharedFetchOptions = Omit<SeekritFetchOptions, "scope">;
+export type SharedFetchOptions = Omit<SeekritFetchOptions, "scope"> & {
+  /** @internal — see `OPERATOR_FIXED_DESTINATION`. */
+  [OPERATOR_FIXED_DESTINATION]?: boolean;
+};
 
 /**
  * A `fetch` per distinct scope, least-recently-used beyond `maxScopes` dropped

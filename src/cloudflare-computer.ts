@@ -52,7 +52,13 @@
  * and `@seekrit/sdk` stays dependency-free.
  */
 import { SeekritError, SeekritSubstitutionError } from "./errors.js";
-import { type AllowRule, evaluate, type PolicyDecision, rulesFromAllow } from "./policy.js";
+import {
+  type AllowRule,
+  evaluate,
+  type PolicyDecision,
+  rulesFromAllow,
+  transportOf,
+} from "./policy.js";
 import {
   createPolicySource,
   type PolicySource,
@@ -211,6 +217,9 @@ export function seekritEgress(options: SeekritEgressOptions = {}): SeekritEgress
     const method = request.method.toUpperCase();
     const path = url.pathname;
     const where = { host, method, path };
+    // The workload picks the URL, so the scheme and port it dialled are part of
+    // the question, exactly as on the proxy's forward plane.
+    const transport = transportOf(url);
 
     // 0. The rules in force. With a signed source this can fetch and verify;
     //    with none to trust, nothing is permitted — the same answer the proxy
@@ -238,7 +247,7 @@ export function seekritEgress(options: SeekritEgressOptions = {}): SeekritEgress
     }
 
     // 1. The operation. Default-deny, before anything is read or resolved.
-    const verdict = evaluate(rules, where);
+    const verdict = evaluate(rules, { ...where, transport });
     if (verdict.decision !== "allow") {
       const message = describeOperation(verdict.decision);
       return refuse(
@@ -309,7 +318,7 @@ export function seekritEgress(options: SeekritEgressOptions = {}): SeekritEgress
       const values = await resolver(options.with);
       const injected = new Set<string>();
       const lookup = (name: string): Lookup => {
-        const decision = evaluate(rules, { ...where, secret: name }).decision;
+        const decision = evaluate(rules, { ...where, transport, secret: name }).decision;
         if (decision !== "allow") return { kind: "denied", reason: decision };
         const value = values[name];
         if (value === undefined) return { kind: "unknown" };
@@ -526,10 +535,13 @@ export async function resolveEnv(
 export { placeholder, hasPlaceholder, substitute, type Lookup } from "./substitute.js";
 export {
   evaluate,
+  rulePorts,
   rulesFromAllow,
+  transportOf,
   type AllowRule,
   type PolicyDecision,
   type PolicyQuery,
+  type PolicyTransport,
   type PolicyVerdict,
 } from "./policy.js";
 export type { ClientSource, ResolveSource } from "./resolver.js";

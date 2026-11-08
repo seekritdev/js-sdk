@@ -6,7 +6,14 @@
 import assert from "node:assert/strict";
 
 import { SeekritError } from "../dist/index.js";
-import { evaluate, matchPath, SeekritSubstitutionError, seekritFetch } from "../dist/fetch.js";
+import {
+  evaluate,
+  matchPath,
+  rulePorts,
+  SeekritSubstitutionError,
+  seekritFetch,
+  transportOf,
+} from "../dist/fetch.js";
 
 let failures = 0;
 async function check(name, fn) {
@@ -388,6 +395,52 @@ for (const [host, method, path, secret, decision, ruleIndex] of DECISIONS) {
   });
 }
 
+await check("a rule naming no ports covers HTTPS on 443, not every port", async () => {
+  // The same finding as the proxy's: another port on the same name is another
+  // service, and cleartext puts the substituted value on the wire.
+  const { seen, impl } = recorder();
+  const f = seekritFetch({
+    allow: { "api.openai.com": ["OPENAI_API_KEY"] },
+    client: fakeClient(KEYS),
+    fetch: impl,
+  });
+  const auth = { headers: { authorization: "Bearer {{seekrit:OPENAI_API_KEY}}" } };
+  for (const url of [
+    "https://api.openai.com:8443/v1/models",
+    "http://api.openai.com/v1/models",
+    "http://api.openai.com:443/v1/models",
+  ]) {
+    await assertRefused(f(url, auth), { code: "denied", name: "OPENAI_API_KEY" });
+  }
+  assert.equal(seen.url, undefined, "nothing was sent");
+  // The default port, written out or not, is the one the rule covers.
+  const ok = await f("https://api.openai.com:443/v1/models", auth);
+  assert.equal(ok.status, 200);
+  assert.equal(seen.headers.authorization, "Bearer sk-live-abc");
+});
+
+await check("listed ports are exactly the ports a rule covers", async () => {
+  const { seen, impl } = recorder();
+  const f = seekritFetch({
+    rules: [{ host: "localhost", http_ports: [3000], allow: ["STRIPE_SECRET_KEY"] }],
+    client: fakeClient(KEYS),
+    fetch: impl,
+  });
+  const auth = { headers: { authorization: "Bearer {{seekrit:STRIPE_SECRET_KEY}}" } };
+  const ok = await f("http://localhost:3000/charge", auth);
+  assert.equal(ok.status, 200);
+  assert.equal(seen.headers.authorization, "Bearer sk_test_stripe");
+  // `http_ports` alone replaces the default rather than adding to it.
+  await assertRefused(f("https://localhost/charge", auth), {
+    code: "denied",
+    name: "STRIPE_SECRET_KEY",
+  });
+  await assertRefused(f("http://localhost:3001/charge", auth), {
+    code: "denied",
+    name: "STRIPE_SECRET_KEY",
+  });
+});
+
 await check("policy: the query string never participates in path matching", () => {
   assert.equal(matchPath("/v1/models", "/v1/models?limit=1"), true);
 });
@@ -407,6 +460,22 @@ await check("policy: host matching ignores case", () => {
     secret: "OPENAI_API_KEY",
   });
   assert.equal(verdict.decision, "allow");
+});
+
+await check("policy: ports refuse with their own decision, and only where asked", () => {
+  const rules = [{ host: "api.test", allow: ["K"] }];
+  const query = { host: "api.test", method: "GET", path: "/", secret: "K" };
+  assert.equal(evaluate(rules, { ...query, transport: transportOf(new URL("https://api.test")) }).decision, "allow");
+  assert.equal(
+    evaluate(rules, { ...query, transport: transportOf(new URL("https://api.test:8443")) }).decision,
+    "port_not_allowed",
+  );
+  // A scheme no rule can cover.
+  assert.equal(evaluate(rules, { ...query, transport: transportOf(new URL("ftp://api.test")) }).decision, "port_not_allowed");
+  // No transport at all: a destination the operator fixed.
+  assert.equal(evaluate(rules, query).decision, "allow");
+  assert.deepEqual(rulePorts({}), { https: [443], http: [] });
+  assert.deepEqual(rulePorts({ http_ports: [80, 80] }), { https: [], http: [80] });
 });
 
 if (failures > 0) {

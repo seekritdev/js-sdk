@@ -26,7 +26,13 @@
  * not blocking it.
  */
 import { SeekritError, SeekritSubstitutionError } from "./errors.js";
-import { type AllowRule, evaluate, rulesFromAllow } from "./policy.js";
+import {
+  type AllowRule,
+  evaluate,
+  OPERATOR_FIXED_DESTINATION,
+  rulesFromAllow,
+  transportOf,
+} from "./policy.js";
 import { refusalResponse } from "./refusal.js";
 import { type ClientSource, createResolver, type ResolveSource } from "./resolver.js";
 import { hasPlaceholder, type Lookup, substitute } from "./substitute.js";
@@ -148,6 +154,12 @@ export function seekritFetch(options: SeekritFetchOptions = {}): typeof globalTh
     throw new SeekritError("seekritFetch needs an allowlist: pass { allow } or { rules }");
   }
 
+  // Every caller of seekritFetch picks its own URL, so the port it dials is part
+  // of the question — except the instance seekritRoute builds for an upstream
+  // the operator configured. See OPERATOR_FIXED_DESTINATION.
+  const operatorFixed =
+    (options as { [OPERATOR_FIXED_DESTINATION]?: boolean })[OPERATOR_FIXED_DESTINATION] === true;
+
   const scanBody = options.body ?? true;
   const refusalMode = options.refusal ?? "respond";
   // Captured now, so installing this function as the global fetch cannot make
@@ -184,6 +196,7 @@ export function seekritFetch(options: SeekritFetchOptions = {}): typeof globalTh
     const lookup = (name: string): Lookup => {
       const verdict = evaluate(rules, {
         host: parsed.hostname,
+        ...(operatorFixed ? {} : { transport: transportOf(parsed) }),
         method,
         path: parsed.pathname,
         secret: name,
@@ -297,12 +310,16 @@ export {
   type PolicySignerJwk,
 } from "./policy-bundle.js";
 export {
+  DEFAULT_HTTPS_PORT,
   evaluate,
   matchPath,
+  rulePorts,
   rulesFromAllow,
+  transportOf,
   type AllowRule,
   type PolicyDecision,
   type PolicyQuery,
+  type PolicyTransport,
   type PolicyVerdict,
 } from "./policy.js";
 export { SeekritSubstitutionError, type SubstitutionErrorCode } from "./errors.js";

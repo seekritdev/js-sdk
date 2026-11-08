@@ -31,8 +31,14 @@ import type { AllowRule } from "./policy.js";
 /** Envelope prefix, versioned like every other seekrit blob. */
 export const POLICY_PREFIX = "ap1";
 
-/** The bundle schema version this build understands. */
-export const POLICY_BUNDLE_VERSION = 1;
+/**
+ * The newest bundle schema version this build understands. v1 rules carry no
+ * ports and mean HTTPS on 443; v2 rules may carry `https_ports`/`http_ports`.
+ */
+export const POLICY_BUNDLE_VERSION = 2;
+
+/** The oldest bundle schema version this build still accepts. */
+export const POLICY_MIN_BUNDLE_VERSION = 1;
 
 /** The four RFC 7638 members of an EC public JWK, and nothing else. */
 export interface PolicySignerJwk {
@@ -61,6 +67,10 @@ export interface PolicyBundleRule extends AllowRule {
   methods: string[];
   paths: string[];
   allow: string[];
+  /** v2 only. See {@link AllowRule.https_ports}. */
+  https_ports?: number[];
+  /** v2 only. */
+  http_ports?: number[];
   label?: string;
 }
 
@@ -135,12 +145,31 @@ export function parsePolicyBundleUnverified(envelope: string): PolicyBundle {
   } catch (cause) {
     throw new SeekritPolicyError(`policy bundle body is unreadable: ${String(cause)}`);
   }
-  if (body?.v !== POLICY_BUNDLE_VERSION) {
+  if (
+    typeof body?.v !== "number" ||
+    body.v < POLICY_MIN_BUNDLE_VERSION ||
+    body.v > POLICY_BUNDLE_VERSION
+  ) {
     throw new SeekritPolicyError(`unsupported policy bundle version ${String(body?.v)}`);
   }
   if (!Array.isArray(body.rules) || !body.signer?.jwk) {
     throw new SeekritPolicyError("policy bundle is missing rules or signer");
   }
+  body.rules.forEach((rule, i) => {
+    // A reader that predates v2 ignores these fields, so a v1 body carrying them
+    // would mean "any port" there and something narrower here: one signature,
+    // two policies. The proxy and @seekrit/core refuse it the same way.
+    if (body.v < 2 && (rule.https_ports !== undefined || rule.http_ports !== undefined)) {
+      throw new SeekritPolicyError(
+        `policy bundle v${body.v} rule ${i + 1} carries https_ports/http_ports, which need a v2 bundle`,
+      );
+    }
+    for (const port of [...(rule.https_ports ?? []), ...(rule.http_ports ?? [])]) {
+      if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        throw new SeekritPolicyError(`policy bundle rule ${i + 1} names an invalid port ${port}`);
+      }
+    }
+  });
   return body;
 }
 

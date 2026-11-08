@@ -147,6 +147,41 @@ await check("the ceiling refuses a bundle wholesale rather than narrowing it", a
   assert.throws(() => checkPolicyCeiling(bundle.rules, narrowed), SeekritPolicyError);
 });
 
+for (const vector of vectors.transport.bundles) {
+  await check(`transport bundle: ${vector.label}`, async () => {
+    if (!vector.verifies) {
+      await assert.rejects(
+        () => verifyPolicyBundle(vector.envelope, PINNED),
+        SeekritPolicyError,
+        `expected ${vector.reject_reason} to be refused`,
+      );
+      return;
+    }
+    const bundle = await verifyPolicyBundle(vector.envelope, PINNED);
+    assert.equal(bundle.v, vector.v);
+    assert.equal(JSON.stringify(bundle), vector.canonical_body);
+    checkPolicyBundleContext(bundle, { now: NOW });
+  });
+}
+
+await check("ports decide exactly what the proxy decides", async () => {
+  const v1 = await verifyPolicyBundle(vectors.bundles[0].envelope, PINNED);
+  const v2 = await verifyPolicyBundle(vectors.transport.bundles[0].envelope, PINNED);
+  for (const d of vectors.transport.decisions) {
+    const rules = d.bundle === "primary" ? v1.rules : v2.rules;
+    const verdict = evaluate(rules, {
+      host: d.host,
+      ...(d.transport === null ? {} : { transport: d.transport }),
+      method: d.method,
+      path: d.path,
+      ...(d.secret === undefined ? {} : { secret: d.secret }),
+    });
+    const at = d.transport ? `${d.transport.scheme}:${d.transport.port}` : "-";
+    assert.equal(verdict.decision, d.decision, `${d.method} ${d.host} over ${at}${d.path}`);
+    assert.equal(verdict.ruleIndex, d.rule_index, `${d.method} ${d.host} over ${at}${d.path}`);
+  }
+});
+
 await check("parsing without verifying is possible, and clearly named", async () => {
   const tampered = vectors.bundles.find((b) => b.reject_reason === "bad_signature");
   const bundle = parsePolicyBundleUnverified(tampered.envelope);

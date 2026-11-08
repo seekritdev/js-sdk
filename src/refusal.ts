@@ -20,6 +20,8 @@ export function describeOperation(decision: PolicyDecision): string {
       return "permitted";
     case "no_rule":
       return "no policy rule covers this upstream";
+    case "port_not_allowed":
+      return "this scheme or port is not permitted toward this upstream";
     case "method_not_allowed":
       return "this method is not permitted toward this upstream";
     case "path_not_allowed":

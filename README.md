@@ -91,6 +91,21 @@ The allowlist is the boundary, and it is default-deny: a name that is not
 permitted toward that host, method, and path is refused, and so is a name that
 did not resolve. Neither sends the request.
 
+A rule also covers **ports**, and naming none means HTTPS on 443 only — the same
+reading as `seekrit-proxy`. The same hostname on another port is another
+service, and `http://` would send the credential unencrypted, so either needs
+the port listed; listing replaces the 443 default rather than adding to it:
+
+```ts
+seekritFetch({
+  rules: [{ host: "localhost", http_ports: [3000], allow: ["STRIPE_SECRET_KEY"] }],
+});
+```
+
+`seekritRoute`'s configured `upstream` is the exception: you set its port, the
+caller does not, so it is not narrowed. Signed `ap1.` bundles of version 1 and 2
+both verify; v2 is the version whose rules name ports.
+
 A refusal answers with the same **403** the proxy answers with, carrying
 `x-seekrit-refusal` and the secret's name but never its value. That is on
 purpose: a provider SDK wraps anything its HTTP layer raises into an opaque

@@ -10,12 +10,25 @@
  * Default-deny throughout. `allow: []` means no secret may be injected toward
  * that host; empty `methods`/`paths` mean "any", because an empty list as "deny
  * everything" is a shape that only ever arises by mistake.
+ *
+ * Ports are the exception to "empty means any". A rule naming no ports covers
+ * HTTPS on 443 and nothing else, exactly as the proxy reads it: the same name on
+ * another port is another service, and cleartext puts the substituted credential
+ * on the wire. Listing `https_ports` or `http_ports` replaces that default.
  */
 
 /** One upstream host and what may be injected toward it. */
 export interface AllowRule {
   /** Bare hostname, lowercased: no scheme, no port, no path. */
   host: string;
+  /**
+   * TLS ports this rule covers. **Not** "absent ⇒ any": with `http_ports` also
+   * absent the rule covers HTTPS on 443 only, and listing either replaces that
+   * default rather than adding to it.
+   */
+  https_ports?: number[];
+  /** Cleartext `http://` ports this rule covers. Absent ⇒ none. */
+  http_ports?: number[];
   /** Uppercased HTTP methods. Empty or absent ⇒ any. */
   methods?: string[];
   /** Path globs (`*` within a segment, `**` across). Empty or absent ⇒ any. */
@@ -29,6 +42,7 @@ export interface AllowRule {
 export type PolicyDecision =
   | "allow"
   | "no_rule"
+  | "port_not_allowed"
   | "method_not_allowed"
   | "path_not_allowed"
   | "secret_not_allowed";
@@ -39,8 +53,21 @@ export interface PolicyVerdict {
   ruleIndex: number | null;
 }
 
+/** The scheme and port a request dials — what a hostname does not name. */
+export interface PolicyTransport {
+  scheme: "https" | "http";
+  port: number;
+}
+
 export interface PolicyQuery {
   host: string;
+  /**
+   * How the request reaches the host — usually {@link transportOf} its URL.
+   * Omit it only where the destination is fixed by the operator rather than by
+   * the caller (a route handler's configured upstream), which no port rule
+   * narrows. `null` is a scheme no rule can cover, and is refused.
+   */
+  transport?: PolicyTransport | null;
   method: string;
   path: string;
   /** The secret to be injected. Omit to ask only about the operation. */
@@ -105,6 +132,49 @@ function coversPath(rule: AllowRule, path: string): boolean {
 }
 
 /**
+ * Set on the options of the `seekritFetch` that `seekritRoute` builds, whose
+ * upstream the operator wrote rather than the caller: a fixed destination has
+ * no port for a rule to narrow — the same exemption `apps/proxy` makes on its
+ * reverse plane. A symbol in a module no entry point exports, so a caller of
+ * `seekritFetch` cannot switch the port check off.
+ *
+ * @internal
+ */
+export const OPERATOR_FIXED_DESTINATION: unique symbol = Symbol("seekrit.operatorFixedDestination");
+
+/** The port a rule covers when it names none. */
+export const DEFAULT_HTTPS_PORT = 443;
+
+/** The ports a rule covers, with the HTTPS-on-443 default applied. */
+export function rulePorts(rule: Pick<AllowRule, "https_ports" | "http_ports">): {
+  https: number[];
+  http: number[];
+} {
+  const https = [...new Set(rule.https_ports ?? [])].sort((a, b) => a - b);
+  const http = [...new Set(rule.http_ports ?? [])].sort((a, b) => a - b);
+  if (https.length === 0 && http.length === 0) return { https: [DEFAULT_HTTPS_PORT], http: [] };
+  return { https, http };
+}
+
+/**
+ * The scheme and port a URL dials, with the scheme's own port filled in — or
+ * `null` for anything but `http:`/`https:`, which no rule can cover.
+ */
+export function transportOf(url: URL): PolicyTransport | null {
+  const scheme = url.protocol === "https:" ? "https" : url.protocol === "http:" ? "http" : null;
+  if (scheme === null) return null;
+  const port = url.port === "" ? (scheme === "https" ? 443 : 80) : Number(url.port);
+  return { scheme, port };
+}
+
+function reaches(rule: AllowRule, transport: PolicyTransport | null | undefined): boolean {
+  if (transport === undefined) return true;
+  if (transport === null) return false;
+  const ports = rulePorts(rule);
+  return (transport.scheme === "https" ? ports.https : ports.http).includes(transport.port);
+}
+
+/**
  * Decide one query against an ordered rule set — first match wins, and a
  * refusal says *which* constraint refused. Naming the constraint matters: a
  * default-deny rule set fails in exactly the confusing direction.
@@ -112,12 +182,17 @@ function coversPath(rule: AllowRule, path: string): boolean {
 export function evaluate(rules: AllowRule[], query: PolicyQuery): PolicyVerdict {
   const host = query.host.trim().toLowerCase();
   let hostMatched = false;
+  let portMatched = false;
   let pathMatchedIndex: number | null = null;
 
   for (let i = 0; i < rules.length; i++) {
     const rule = rules[i] as AllowRule;
     if (rule.host.trim().toLowerCase() !== host) continue;
     hostMatched = true;
+    // A rule on another port is skipped like a rule on another host — another
+    // port is another service — but the refusal still says the host was ruled.
+    if (!reaches(rule, query.transport)) continue;
+    portMatched = true;
     const pathsOk = coversPath(rule, query.path);
     if (pathsOk && coversMethod(rule, query.method)) {
       if (query.secret !== undefined && !(rule.allow ?? []).includes(query.secret)) {
@@ -131,10 +206,15 @@ export function evaluate(rules: AllowRule[], query: PolicyQuery): PolicyVerdict 
   if (pathMatchedIndex !== null) {
     return { decision: "method_not_allowed", ruleIndex: pathMatchedIndex };
   }
-  return { decision: hostMatched ? "path_not_allowed" : "no_rule", ruleIndex: null };
+  if (!hostMatched) return { decision: "no_rule", ruleIndex: null };
+  return { decision: portMatched ? "path_not_allowed" : "port_not_allowed", ruleIndex: null };
 }
 
-/** Expand the `{ host: [names] }` shorthand into rules that permit any operation. */
+/**
+ * Expand the `{ host: [names] }` shorthand into rules that permit any operation
+ * — on HTTPS port 443, like any rule naming no ports. For another port or for
+ * cleartext, write the rule out with `https_ports` / `http_ports`.
+ */
 export function rulesFromAllow(allow: Record<string, string[]>): AllowRule[] {
   return Object.entries(allow).map(([host, names]) => ({
     host,

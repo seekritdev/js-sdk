@@ -105,6 +105,35 @@ await check("method and path narrowing refuse with the constraint that refused",
   assert.equal(sent.seen.length, 0);
 });
 
+await check("a ruled host on another port or over cleartext is refused, not sent", async () => {
+  // The workload picks the URL, so this is the proxy's forward plane: a rule
+  // naming no ports covers HTTPS on 443 only.
+  const { egress, sent, client } = gateway();
+  for (const url of ["https://api.openai.com:8443/v1/models", "http://api.openai.com/v1/models"]) {
+    const res = await egress.fetch(
+      new Request(url, { headers: { authorization: "Bearer {{seekrit:OPENAI_API_KEY}}" } }),
+    );
+    assert.equal(res.status, 403, url);
+    assert.equal(res.headers.get("x-seekrit-refusal"), "port_not_allowed");
+    assert.match(await res.text(), /scheme or port is not permitted/);
+  }
+  assert.equal(sent.seen.length, 0);
+  assert.equal(client.state.calls, 0, "a refused operation must not resolve");
+
+  // A rule that lists a port gets exactly that port.
+  const listed = gateway({
+    allow: {},
+    rules: [{ host: "registry.internal", http_ports: [5000], allow: ["OPENAI_API_KEY"] }],
+  });
+  const ok = await listed.egress.fetch(
+    new Request("http://registry.internal:5000/v2/", {
+      headers: { authorization: "Bearer {{seekrit:OPENAI_API_KEY}}" },
+    }),
+  );
+  assert.equal(ok.status, 200);
+  assert.equal(listed.sent.seen[0].auth, `Bearer ${KEYS.OPENAI_API_KEY}`);
+});
+
 await check("a permitted request with no placeholder passes through without resolving", async () => {
   const { egress, sent, client } = gateway();
   const res = await egress.fetch(new Request("https://api.openai.com/v1/models"));

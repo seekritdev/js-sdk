@@ -50,7 +50,13 @@
  */
 import { SeekritError } from "./errors.js";
 import type { SeekritFetchOptions, SeekritFetchScope } from "./fetch.js";
-import { type AllowRule, evaluate, type PolicyVerdict, rulesFromAllow } from "./policy.js";
+import {
+  type AllowRule,
+  evaluate,
+  OPERATOR_FIXED_DESTINATION,
+  type PolicyVerdict,
+  rulesFromAllow,
+} from "./policy.js";
 import { scopedFetch } from "./scoped.js";
 import { assertServerOnly } from "./server-only.js";
 import { hasPlaceholder } from "./substitute.js";
@@ -297,7 +303,10 @@ export function seekritRoute(options: SeekritRouteOptions): SeekritRouteHandlers
     throw new SeekritError("seekritRoute needs an allowlist: pass { allow } or { rules }");
   }
 
-  const fetchFor = scopedFetch(fetchOptions, maxScopes);
+  // The upstream is this handler's configuration, not the caller's choice, so
+  // its port is not a question for the rules — the reverse-plane reading. The
+  // flag carries that to the per-placeholder check inside seekritFetch too.
+  const fetchFor = scopedFetch({ ...fetchOptions, [OPERATOR_FIXED_DESTINATION]: true }, maxScopes);
 
   async function handle(request: Request, context?: RouteContext): Promise<Response> {
     if (!(await authorize(request))) {
@@ -323,7 +332,8 @@ export function seekritRoute(options: SeekritRouteOptions): SeekritRouteHandlers
 
     const method = request.method.toUpperCase();
     // The operation gate. See the note at the top of this file: without it, a
-    // request that carries no placeholder would never meet the allowlist.
+    // request that carries no placeholder would never meet the allowlist. No
+    // transport: `upstream` is configured here, not picked by the caller.
     const verdict = evaluate(rules, {
       host: target.hostname,
       method,
