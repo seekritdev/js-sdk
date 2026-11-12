@@ -152,15 +152,24 @@ is typed structurally, so `@seekrit/sdk` stays dependency-free. Details:
 proxy: the sandbox holds placeholders, your Worker holds the credentials.
 
 ```ts
-import { seekritEgress, seekritEgressPolicy, seekritEnv } from "@seekrit/sdk/cloudflare-computer";
+import {
+  type SeekritEgressGateway,
+  seekritEgress,
+  seekritEgressPolicy,
+  seekritEnv,
+} from "@seekrit/sdk/cloudflare-computer";
+
+// Module scope, not a class field: Workers constructs a WorkerEntrypoint for
+// every call, so a field would rebuild the gateway — and resolve — per request.
+let egress: SeekritEgressGateway | undefined;
 
 export class SeekritGateway extends WorkerEntrypoint<Env> {
-  #egress = seekritEgress({
-    token: this.env.SEEKRIT_TOKEN,
-    allow: { "api.openai.com": ["OPENAI_API_KEY"] },
-  });
   override fetch(request: Request) {
-    return this.#egress.fetch(request);
+    egress ??= seekritEgress({
+      token: this.env.SEEKRIT_TOKEN,
+      allow: { "api.openai.com": ["OPENAI_API_KEY"] },
+    });
+    return egress.fetch(request, this.ctx);
   }
 }
 
@@ -198,16 +207,48 @@ seekritEgress({
       get: (key) => env.POLICY_KV.get(key),
       put: (key, envelope, ttl) => env.POLICY_KV.put(key, envelope, { expirationTtl: ttl }),
     },
-    waitUntil: (p) => ctx.waitUntil(p),
   },
 });
 ```
+
+Pass the entrypoint's `ctx` as `egress.fetch(request, this.ctx)` and a refresh
+that comes due runs in the background of that request.
 
 The bundle is signed in the browser, so the API serves bytes it cannot forge and
 nothing is enforced until the signature checks out against signers you pinned.
 `verifyPolicyBundle` is exported on its own if you want to verify one yourself;
 it is pinned to the same golden vectors as the Rust verifier the proxy uses.
 Details: <https://seekrit.dev/docs/guides/sandboxes/cloudflare-computer>.
+
+### Cloudflare Sandbox
+
+`@seekrit/sdk/cloudflare-sandbox` is the same gateway for a Container's
+outbound intercepts — the `Outbound` entrypoint in Cloudflare's coding-agent
+tutorial — plus `containerTrustEnv()`, the variables that make clients in the
+container trust the CA the platform terminates intercepted TLS with.
+
+```ts
+import { containerTrustEnv, seekritEgress, seekritEnv } from "@seekrit/sdk/cloudflare-sandbox";
+
+// the gateway: an Outbound WorkerEntrypoint exactly as above
+
+// in the Durable Object that owns the container
+await container.interceptOutboundHttps("*", this.ctx.exports.Outbound);
+container.start({ image: container.images.agent, enableInternet: false });
+
+await container.exec(["python", "agent.py"], {
+  env: { ...seekritEnv(["OPENAI_API_KEY"]), ...containerTrustEnv() },
+});
+```
+
+Intercepting `"*"` with internet off makes the gateway the container's only
+route out, so its default-deny is the egress policy. git over HTTPS works with a
+placeholder password (`https://x-access-token:{{seekrit:GITHUB_TOKEN}}@github.com/…`):
+the gateway decodes an `Authorization: Basic` credential, substitutes inside it,
+and re-encodes it. It cannot inject into non-HTTP connections (`psql`, git over
+SSH); use `resolveEnv()` for those steps when they are yours.
+Details: <https://seekrit.dev/docs/guides/sandboxes/cloudflare-sandbox>.
+
 ## React and Next.js
 
 `@seekrit/sdk/react` reads secrets in a **server component**, once per render:

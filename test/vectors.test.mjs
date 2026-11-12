@@ -17,7 +17,13 @@ import {
   SeekritReferenceError,
   TokenKey,
 } from "../dist/index.js";
-import { SeekritSubstitutionError, substitute } from "../dist/fetch.js";
+import {
+  headerHasPlaceholder,
+  hasPlaceholder,
+  SeekritSubstitutionError,
+  substitute,
+  substituteHeader,
+} from "../dist/fetch.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const vectors = JSON.parse(readFileSync(join(here, "..", "testdata", "vectors.json"), "utf8"));
@@ -102,9 +108,20 @@ for (const testCase of vectors.substitution.cases) {
       const value = testCase.values[name];
       return value === undefined ? { kind: "unknown" } : { kind: "value", value };
     };
+    // A `header` case is that header's value, through the header entry point
+    // (which also sees inside an `Authorization: Basic` credential).
+    const run =
+      testCase.header === undefined
+        ? () => substitute(testCase.input, lookup)
+        : () => substituteHeader(testCase.header, testCase.input, lookup);
+    const found =
+      testCase.header === undefined
+        ? hasPlaceholder(testCase.input)
+        : headerHasPlaceholder(testCase.header, testCase.input);
     if (testCase.error) {
+      assert.ok(found, "a case that refuses must contain a placeholder");
       assert.throws(
-        () => substitute(testCase.input, lookup),
+        run,
         (err) => {
           assert.ok(err instanceof SeekritSubstitutionError);
           assert.equal(err.code, testCase.error.code);
@@ -114,9 +131,11 @@ for (const testCase of vectors.substitution.cases) {
       );
       return;
     }
-    const { text, names } = substitute(testCase.input, lookup);
+    const { text, names } = run();
     assert.equal(text, testCase.expected);
     assert.deepEqual(names, testCase.names);
+    // No placeholder seen ⇒ the gateway skips the request, so it must come back untouched.
+    if (!found) assert.equal(testCase.input, testCase.expected);
   });
 }
 

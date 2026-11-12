@@ -370,6 +370,45 @@ await check("the gateway enforces the rules a signed bundle carries", async () =
   assert.equal(sent.seen.length, 1);
 });
 
+await check("a long-lived gateway backgrounds a refresh on the calling request's ctx", async () => {
+  // At module scope one gateway serves many requests, each with its own
+  // execution context. A refresh has to ride the request that found it due —
+  // a context captured at construction would belong to a request long gone.
+  const pub = await publisher();
+  const upstream = api(await pub.sign());
+  const egress = seekritEgress({
+    client: { resolve: async () => ({ OPENAI_API_KEY: "sk-live-abc" }) },
+    fetch: upstreamFetch().impl,
+    policy: {
+      signers: [pub.kid],
+      agent: "agt_test",
+      refreshSeconds: 0,
+      fetchBundle: upstream.fetchBundle,
+    },
+  });
+  const ctx = () => {
+    const waited = [];
+    return { waited, waitUntil: (p) => waited.push(p) };
+  };
+  const call = (c) => egress.fetch(new Request("https://api.openai.com/v1/models"), c);
+
+  const first = ctx();
+  assert.equal((await call(first)).status, 200);
+  assert.equal(first.waited.length, 0, "the first load has nothing to serve meanwhile");
+
+  const second = ctx();
+  assert.equal((await call(second)).status, 200);
+  assert.equal(second.waited.length, 1, "the due refresh rides this request");
+  assert.equal(first.waited.length, 0, "and never the one that has finished");
+  await Promise.all(second.waited);
+  assert.equal(upstream.state.calls, 2);
+
+  // No ctx: the request waits for the refresh itself rather than leaving it to
+  // be cancelled.
+  assert.equal((await call(undefined)).status, 200);
+  assert.equal(upstream.state.calls, 3);
+});
+
 await check("no usable policy means nothing is permitted", async () => {
   const pub = await publisher();
   const sent = upstreamFetch();

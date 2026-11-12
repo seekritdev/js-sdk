@@ -93,6 +93,96 @@ export function substitute(input: string, lookup: (name: string) => Lookup): Sub
 }
 
 /**
+ * Substitute inside one request header's value — {@link substitute}, plus the
+ * one place a client encodes a placeholder before sending it.
+ *
+ * git over HTTPS (and anything else speaking HTTP Basic) sends `user:password`
+ * base64-encoded, so `https://x-access-token:{{seekrit:GITHUB_TOKEN}}@github.com`
+ * leaves the client as `Authorization: Basic eC1hY2Nlc3Mt…` and the marker is
+ * invisible to a text scan. For exactly that shape — an `Authorization` or
+ * `Proxy-Authorization` value of `Basic` (any case), one or more spaces, then
+ * canonical padded base64 that decodes to UTF-8 — the decoded text goes through
+ * the same `lookup` and is re-encoded, keeping the scheme and spacing as sent.
+ * A denied or unknown name throws exactly as it does anywhere else.
+ *
+ * Every other value, a Basic credential failing any of those checks included,
+ * is substituted as plain text — so `Basic {{seekrit:GIT_BASIC}}` still works,
+ * and no other header or scheme is ever base64-decoded. Pinned, like the rest,
+ * by the `header` cases of the shared vectors (`apps/proxy/src/substitute.rs`
+ * is the reference).
+ *
+ * @throws {SeekritSubstitutionError} on a denied or unresolved name.
+ */
+export function substituteHeader(
+  name: string,
+  value: string,
+  lookup: (name: string) => Lookup,
+): SubstitutionOutcome {
+  const basic = basicCredential(name, value);
+  if (basic === undefined) return substitute(value, lookup);
+  const inner = substitute(basic.decoded, lookup);
+  // Nothing injected: forward the credential exactly as it arrived.
+  if (inner.names.length === 0) return { text: value, names: [] };
+  return { text: basic.prefix + encodeBase64(new TextEncoder().encode(inner.text)), names: inner.names };
+}
+
+/**
+ * Whether one request header's value carries a placeholder
+ * {@link substituteHeader} would act on — {@link hasPlaceholder}, seeing inside
+ * a Basic credential the same way.
+ */
+export function headerHasPlaceholder(name: string, value: string): boolean {
+  const basic = basicCredential(name, value);
+  return hasPlaceholder(basic === undefined ? value : basic.decoded);
+}
+
+const CREDENTIAL_HEADERS = new Set(["authorization", "proxy-authorization"]);
+/** `Basic`, any case, then one or more spaces. ASCII only: `i` without `u` never folds non-ASCII to ASCII. */
+const BASIC_PREFIX = /^basic +/i;
+/** Standard alphabet (RFC 4648 §4), padded. The length and padding bits are checked by re-encoding. */
+const BASE64_SHAPE = /^[A-Za-z0-9+/]+={0,2}$/;
+
+/** The scheme-and-spaces prefix and decoded text of a Basic credential, or `undefined` to scan as text. */
+function basicCredential(name: string, value: string): { prefix: string; decoded: string } | undefined {
+  if (!CREDENTIAL_HEADERS.has(name.toLowerCase())) return undefined;
+  const prefix = BASIC_PREFIX.exec(value)?.[0];
+  if (prefix === undefined) return undefined;
+  const bytes = decodeCanonicalBase64(value.slice(prefix.length));
+  if (bytes === undefined) return undefined;
+  try {
+    return { prefix, decoded: new TextDecoder("utf-8", { fatal: true }).decode(bytes) };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Decode standard base64 only if `input` is the *canonical* encoding of its
+ * bytes: non-empty, padded to a multiple of four, standard alphabet, zero
+ * padding bits. `atob` alone is lenient (it drops whitespace and accepts a
+ * missing pad), and every leniency is a different answer to "is this a
+ * credential?" than the proxy gives — so the re-encode must reproduce `input`.
+ */
+function decodeCanonicalBase64(input: string): Uint8Array | undefined {
+  if (input.length % 4 !== 0 || !BASE64_SHAPE.test(input)) return undefined;
+  let binary: string;
+  try {
+    binary = atob(input);
+  } catch {
+    return undefined;
+  }
+  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+  return encodeBase64(bytes) === input ? bytes : undefined;
+}
+
+/** Standard base64 with `=` padding. */
+function encodeBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+/**
  * Build the placeholder for a secret name: `placeholder("OPENAI_API_KEY")` is
  * `"{{seekrit:OPENAI_API_KEY}}"`. One place that knows the syntax, and it
  * rejects a name the engine would not recognise rather than silently emitting

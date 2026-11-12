@@ -93,6 +93,11 @@ export interface PolicySourceOptions {
   /**
    * Hand a background refresh to the runtime — `(p) => ctx.waitUntil(p)`.
    * Without it, the request that finds the bundle stale waits for the refresh.
+   *
+   * Only for a source built *per request*. One that lives at module scope
+   * would keep calling the first request's context long after it ended — pass
+   * each request's to {@link PolicySource.current} instead (the gateway does
+   * this with `egress.fetch(request, this.ctx)`).
    */
   waitUntil?: (promise: Promise<unknown>) => void;
   /** `skt_…` service token used to fetch the bundle. Defaults to `$SEEKRIT_TOKEN`. */
@@ -119,7 +124,14 @@ export interface LoadedPolicy {
 
 /** Resolves the rules in force right now, or throws if there are none to trust. */
 export interface PolicySource {
-  current(): Promise<LoadedPolicy>;
+  /**
+   * @param waitUntil This call's own `waitUntil`, overriding
+   *   {@link PolicySourceOptions.waitUntil}. A source that outlives one request
+   *   — the usual case, at module scope — must be handed the *current*
+   *   request's, because a background refresh attached to a request that has
+   *   already finished may be cancelled.
+   */
+  current(waitUntil?: (promise: Promise<unknown>) => void): Promise<LoadedPolicy>;
 }
 
 function readEnv(name: string): string | undefined {
@@ -278,15 +290,15 @@ export function createPolicySource(options: PolicySourceOptions): PolicySource {
   }
 
   return {
-    async current(): Promise<LoadedPolicy> {
+    async current(waitUntil = options.waitUntil): Promise<LoadedPolicy> {
       const held = current;
       if (usable(held) && Date.now() < refreshAt) return held;
 
       if (usable(held)) {
         // Due for a refresh, but what we hold is still valid. Only background it
         // when the runtime will keep the work alive.
-        if (options.waitUntil) {
-          options.waitUntil(
+        if (waitUntil) {
+          waitUntil(
             refreshOnce().catch((error: unknown) => {
               options.onPolicy?.({
                 kind: "refresh_failed",

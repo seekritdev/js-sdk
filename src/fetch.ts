@@ -35,7 +35,7 @@ import {
 } from "./policy.js";
 import { refusalResponse } from "./refusal.js";
 import { type ClientSource, createResolver, type ResolveSource } from "./resolver.js";
-import { hasPlaceholder, type Lookup, substitute } from "./substitute.js";
+import { hasPlaceholder, headerHasPlaceholder, type Lookup, substitute, substituteHeader } from "./substitute.js";
 
 /** Per-request narrowing, returned by {@link SeekritFetchOptions.scope}. */
 export interface SeekritFetchScope {
@@ -217,7 +217,7 @@ export function seekritFetch(options: SeekritFetchOptions = {}): typeof globalTh
 
     const nextHeaders = new Headers();
     headers.forEach((value, name) => {
-      nextHeaders.set(name, substitute(value, lookup).text);
+      nextHeaders.set(name, substituteHeader(name, value, lookup).text);
     });
 
     const bodyInit = init?.body;
@@ -251,8 +251,8 @@ export function seekritFetch(options: SeekritFetchOptions = {}): typeof globalTh
 
     let touched = hasPlaceholder(urlString);
     if (!touched) {
-      headers.forEach((value) => {
-        if (!touched && hasPlaceholder(value)) touched = true;
+      headers.forEach((value, name) => {
+        if (!touched && headerHasPlaceholder(name, value)) touched = true;
       });
     }
     if (!touched && bodyText !== undefined) touched = hasPlaceholder(bodyText);
@@ -288,8 +288,10 @@ function narrow(rules: AllowRule[], names: string[]): AllowRule[] {
 // a test double, or an allowlist derived from a verified policy bundle).
 export {
   hasPlaceholder,
+  headerHasPlaceholder,
   placeholder,
   substitute,
+  substituteHeader,
   type Lookup,
   type SubstitutionOutcome,
 } from "./substitute.js";

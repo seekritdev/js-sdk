@@ -63,6 +63,28 @@ async function assertRefused(promise, { code, name }) {
   assert.ok(!body.includes(KEYS[name] ?? "\u0000"), "a refusal must not carry the value");
 }
 
+await check("sees a placeholder inside an Authorization: Basic credential", async () => {
+  // HTTP Basic clients base64-encode `user:password`, so the marker is only
+  // visible after decoding. Without the header-aware check the shim would not
+  // even notice the request, and would pass it through untouched.
+  const { seen, impl } = recorder();
+  const client = fakeClient(KEYS);
+  const f = seekritFetch({ allow: { "api.openai.com": ["OPENAI_API_KEY"] }, client, fetch: impl });
+  const res = await f("https://api.openai.com/v1/models", {
+    headers: { authorization: `Basic ${btoa("user:{{seekrit:OPENAI_API_KEY}}")}` },
+  });
+  assert.equal(res.status, 200);
+  assert.equal(seen.headers.authorization, `Basic ${btoa("user:sk-live-abc")}`);
+  assert.equal(client.calls, 1);
+  // ...and a name not allowed toward this host refuses exactly as it would in plain text.
+  await assertRefused(
+    f("https://api.openai.com/v1/models", {
+      headers: { authorization: `Basic ${btoa("user:{{seekrit:STRIPE_SECRET_KEY}}")}` },
+    }),
+    { code: "denied", name: "STRIPE_SECRET_KEY" },
+  );
+});
+
 await check("substitutes a header and reports the injection", async () => {
   const { seen, impl } = recorder();
   const injected = [];

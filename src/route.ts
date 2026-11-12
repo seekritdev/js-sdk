@@ -59,7 +59,7 @@ import {
 } from "./policy.js";
 import { scopedFetch } from "./scoped.js";
 import { assertServerOnly } from "./server-only.js";
-import { hasPlaceholder } from "./substitute.js";
+import { headerHasPlaceholder } from "./substitute.js";
 
 assertServerOnly("route");
 
@@ -251,7 +251,7 @@ function sanitizeRequestHeaders(incoming: Headers): Headers {
     // placeholder for us to substitute. A real one is either the app's own
     // session (which the upstream must not see) or an attempt to use this route
     // as a general-purpose proxy with someone else's credential.
-    if (key === "authorization" && !hasPlaceholder(value)) return;
+    if (key === "authorization" && !headerHasPlaceholder(key, value)) return;
     headers.set(name, value);
   });
   return headers;
