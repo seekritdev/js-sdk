@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.0](https://github.com/mileszim/seekrit/compare/sdk-js-v0.11.0...sdk-js-v0.12.0) (2026-11-12)
+
+
+### Features
+
+* **sdk-js:** @seekrit/sdk/cloudflare-sandbox — seekritEgress as a Container's outbound handler ([#592](https://github.com/mileszim/seekrit/issues/592)) ([3cbe1a8](https://github.com/mileszim/seekrit/commit/3cbe1a86d6f2044ab21dcceb0d280452aa25c4c4))
+* substitute placeholders inside Authorization: Basic credentials ([#593](https://github.com/mileszim/seekrit/issues/593)) ([b0cf4b6](https://github.com/mileszim/seekrit/commit/b0cf4b66dc23d365667a591664c5307088a1954a))
+
 ## [0.11.0](https://github.com/mileszim/seekrit/compare/sdk-js-v0.10.0...sdk-js-v0.11.0) (2026-11-11)
 
 
